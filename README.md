@@ -2,7 +2,7 @@
 
 A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API.
 
-The current visual approach is a photo-backed compositing prototype: the N4520 face is anchored by a reference photo, with animated overlays for the reels, tape path, capstan, VU needles, and peak LEDs. The reels and pinch/capstan roller are rendered in a transparent Three.js layer so their rotation, lift, rim highlights, and shadows are handled as shallow 3D scene objects instead of flat DOM images. For a public/distributable version, replace `assets/n4520-reference.jpg` with an owned/licensed straight-on deck photograph or a rendered texture pass from a 3D model.
+The current visual approach is a photo-backed compositing prototype: the N4520 face is anchored by a reference photo, with animated overlays for the reels, tape path, capstan, VU needles, and peak LEDs. The displayed base image is `assets/n4520-reference-powered-vu.jpg`, which preserves the original deck photo while compositing only the powered-on amber VU glass into the original perspective. The reels and pinch/capstan roller are rendered in a transparent Three.js layer so their rotation, lift, rim highlights, and shadows are handled as shallow 3D scene objects instead of flat DOM images. For a public/distributable version, replace the reference photos with owned/licensed straight-on captures or rendered texture passes from a 3D model.
 
 - supply and take-up reel rotation over the real deck geometry
 - tape pack transfer from left reel to right reel
@@ -24,7 +24,8 @@ The pack diameter changes by conserved winding area, so a nearly empty reel rota
 ## Visual References
 
 - Primary front reference: `assets/n4520-reference.jpg`
-- VU meter close-up reference: `assets/n4520-vu-reference.jpg`
+- Powered VU base image: `assets/n4520-reference-powered-vu.jpg`
+- VU meter clean close-up reference: `assets/n4520-vu-clean-reference.png`
 - Detail reference for future modeling: https://reverb.com/item/94457214-philips-n4520-reel-to-reel-tape-recorder-1-4-inch-4-track
 
 ## Verification

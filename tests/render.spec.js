@@ -11,8 +11,8 @@ test("renders the N4520 visualizer without a blank WebGL layer", async ({ page }
 
   const canvas = page.locator("#reelCanvas");
   await expect(canvas).toBeVisible();
-  await expect(page.locator(".vu-photo-left")).toBeVisible();
-  await expect(page.locator(".vu-photo-right")).toBeVisible();
+  await expect(page.locator(".vu-window-left")).toBeVisible();
+  await expect(page.locator(".vu-window-right")).toBeVisible();
 
   const canvasState = await canvas.evaluate((node) => {
     const dataUrl = node.toDataURL("image/png");

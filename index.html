@@ -10,7 +10,7 @@
     <main class="app-shell">
       <section class="viewer" aria-label="Philips N4520 reel to reel visualization">
         <div class="deck-photo-stage" id="deck" data-mode="stop">
-          <img class="deck-photo" src="assets/n4520-reference.jpg" alt="Philips N4520 reel to reel deck">
+          <img class="deck-photo" src="assets/n4520-reference-powered-vu.jpg" alt="Philips N4520 reel to reel deck">
           <div class="photo-vignette" aria-hidden="true"></div>
           <canvas class="reel-3d-layer" id="reelCanvas" aria-hidden="true"></canvas>
 
@@ -53,18 +53,20 @@
           <div class="capstan" id="capstan" aria-hidden="true"></div>
           <div class="pinch-roller" aria-hidden="true"></div>
 
-          <img class="vu-photo vu-photo-left" src="assets/vu-left-blank.png" alt="">
-          <img class="vu-photo vu-photo-right" src="assets/vu-right-blank.png" alt="">
-          <img class="vu-frame vu-frame-left" src="assets/vu-left-frame.png" alt="">
-          <img class="vu-frame vu-frame-right" src="assets/vu-right-frame.png" alt="">
+          <div class="vu-window vu-window-left" aria-hidden="true">
+            <span class="vu-needle-shadow" id="needleShadowL"></span>
+            <span class="vu-needle" id="needleL"></span>
+          </div>
+          <div class="vu-window vu-window-right" aria-hidden="true">
+            <span class="vu-needle-shadow" id="needleShadowR"></span>
+            <span class="vu-needle" id="needleR"></span>
+          </div>
 
           <div class="meter-overlay meter-left" aria-hidden="true">
-            <span class="needle" id="needleL"></span>
             <span class="led led3" id="ledL3">+3</span>
             <span class="led led6" id="ledL6">+6</span>
           </div>
           <div class="meter-overlay meter-right" aria-hidden="true">
-            <span class="needle" id="needleR"></span>
             <span class="led led3" id="ledR3">+3</span>
             <span class="led led6" id="ledR6">+6</span>
           </div>

@@ -26,6 +26,8 @@ const buttons = {
 const needles = {
   left: document.getElementById("needleL"),
   right: document.getElementById("needleR"),
+  leftShadow: document.getElementById("needleShadowL"),
+  rightShadow: document.getElementById("needleShadowR"),
 };
 
 const leds = {
@@ -65,6 +67,8 @@ const pinchRollerDiameterIn = 1.15;
 const vuCalibrationDb = 15;
 const meterMinDb = -30;
 const meterMaxDb = 6;
+const meterMinAngle = -32;
+const meterMaxAngle = 34;
 const referenceWidth = 1600;
 const referenceHeight = 1200;
 const reelTextureSize = 596;
@@ -82,8 +86,6 @@ const reel3d = {
   right: null,
   roller: null,
   rollerWheel: null,
-  needleL: null,
-  needleR: null,
   leftPack: null,
   rightPack: null,
 };
@@ -362,68 +364,6 @@ function createRoller() {
   return { group, wheel: wheelAssembly };
 }
 
-function createMeterNeedle(x, y) {
-  const root = new THREE.Group();
-  root.position.set(x, stageY(y), 92);
-  const shadowGroup = new THREE.Group();
-  const pointerGroup = new THREE.Group();
-  root.add(shadowGroup);
-  root.add(pointerGroup);
-
-  const shape = new THREE.Shape();
-  shape.moveTo(-1.05, 0);
-  shape.lineTo(1.05, 0);
-  shape.lineTo(0.55, 128);
-  shape.lineTo(-0.55, 128);
-  shape.lineTo(-1.15, 0);
-
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: 1.2,
-    bevelEnabled: true,
-    bevelThickness: 0.25,
-    bevelSize: 0.2,
-    bevelSegments: 2,
-  });
-
-  const shadow = new THREE.Mesh(
-    geometry,
-    new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.32,
-      depthWrite: false,
-    }),
-  );
-  shadow.position.z = -5;
-  shadowGroup.add(shadow);
-
-  const pointer = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({
-      color: 0x231813,
-      metalness: 0.28,
-      roughness: 0.42,
-    }),
-  );
-  pointer.position.z = 0;
-  pointerGroup.add(pointer);
-
-  const cap = new THREE.Mesh(
-    new THREE.CylinderGeometry(5.0, 5.6, 2.2, 48),
-    new THREE.MeshStandardMaterial({
-      color: 0x15100d,
-      metalness: 0.45,
-      roughness: 0.38,
-    }),
-  );
-  cap.rotation.x = Math.PI / 2;
-  cap.position.z = 3;
-  pointerGroup.add(cap);
-
-  reel3d.scene.add(root);
-  return { root, pointer: pointerGroup, shadow: shadowGroup };
-}
-
 function resizeReelRenderer() {
   if (!reel3d.renderer) return;
   const { clientWidth, clientHeight } = reelCanvas;
@@ -474,8 +414,6 @@ function initReel3d() {
     const roller = createRoller();
     reel3d.roller = roller.group;
     reel3d.rollerWheel = roller.wheel;
-    reel3d.needleL = createMeterNeedle(718, 1004);
-    reel3d.needleR = createMeterNeedle(898, 1004);
     reel3d.ready = true;
     updateTapePacks(tapeProgress());
     renderReel3d();
@@ -505,21 +443,7 @@ function renderReel3d() {
   reel3d.roller.position.x += (target.x - reel3d.roller.position.x) * 0.28;
   reel3d.roller.position.y += (stageY(target.y) - reel3d.roller.position.y) * 0.28;
   reel3d.rollerWheel.rotation.z = rollerRad;
-  updateMeterNeedle(reel3d.needleL, meterAngle(levelL));
-  updateMeterNeedle(reel3d.needleR, meterAngle(levelR));
-
   reel3d.renderer.render(reel3d.scene, reel3d.camera);
-}
-
-function updateMeterNeedle(needle, angleDeg) {
-  const angle = -THREE.MathUtils.degToRad(angleDeg);
-  needle.pointer.rotation.z = angle;
-  needle.shadow.rotation.z = angle;
-
-  const shadowRise = 7.2;
-  const sideThrow = Math.sin(angle) * 4.2;
-  const depthSkew = Math.cos(angle) * 1.3;
-  needle.shadow.position.set(sideThrow, shadowRise + depthSkew, -5);
 }
 
 function formatTime(seconds) {
@@ -582,7 +506,7 @@ function rmsToVuDb(value) {
 function meterAngle(dbVu) {
   const normalized = clamp((dbVu - meterMinDb) / (meterMaxDb - meterMinDb), 0, 1);
   const shaped = Math.pow(normalized, 0.9);
-  return -43 + shaped * 78;
+  return meterMinAngle + shaped * (meterMaxAngle - meterMinAngle);
 }
 
 function updateMeters(dt) {
@@ -603,11 +527,20 @@ function updateMeters(dt) {
 
   needles.left.style.setProperty("--angle", `${meterAngle(levelL)}deg`);
   needles.right.style.setProperty("--angle", `${meterAngle(levelR)}deg`);
+  updateCssNeedleShadow(needles.leftShadow, meterAngle(levelL));
+  updateCssNeedleShadow(needles.rightShadow, meterAngle(levelR));
 
   leds.left3.classList.toggle("on", peakL >= 3);
   leds.left6.classList.toggle("on", peakL >= 6);
   leds.right3.classList.toggle("on", peakR >= 3);
   leds.right6.classList.toggle("on", peakR >= 6);
+}
+
+function updateCssNeedleShadow(needleShadow, angleDeg) {
+  const radians = angleDeg * (Math.PI / 180);
+  needleShadow.style.setProperty("--angle", `${angleDeg}deg`);
+  needleShadow.style.setProperty("--shadow-x", `${Math.sin(radians) * 1.4}px`);
+  needleShadow.style.setProperty("--shadow-y", `${-3.2 - Math.cos(radians) * 0.5}px`);
 }
 
 function tapeProgress() {

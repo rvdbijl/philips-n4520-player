@@ -166,41 +166,55 @@ input {
   z-index: 3;
 }
 
-.vu-photo,
-.vu-frame {
+.vu-window {
   position: absolute;
-  width: 11.45%;
-  height: auto;
+  overflow: hidden;
   pointer-events: none;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.28));
-}
-
-.vu-photo {
-  z-index: 2;
-}
-
-.vu-frame {
   z-index: 5;
+  border-radius: 2px;
 }
 
-.vu-photo-left {
-  left: 39.1%;
-  top: 72.65%;
+.vu-window-left {
+  left: 41.14%;
+  top: 75.62%;
+  width: 7.42%;
+  height: 4.42%;
 }
 
-.vu-photo-right {
-  left: 50.35%;
-  top: 72.65%;
+.vu-window-right {
+  left: 52.44%;
+  top: 75.62%;
+  width: 7.42%;
+  height: 4.42%;
 }
 
-.vu-frame-left {
-  left: 39.1%;
-  top: 72.65%;
+.vu-needle,
+.vu-needle-shadow {
+  --angle: -35deg;
+  --shadow-x: 0px;
+  --shadow-y: -4px;
+  position: absolute;
+  left: 50%;
+  bottom: -62%;
+  width: 1.6px;
+  height: 148%;
+  border-radius: 999px;
+  transform-origin: 50% 100%;
+  pointer-events: none;
 }
 
-.vu-frame-right {
-  left: 50.35%;
-  top: 72.65%;
+.vu-needle {
+  transform: translateX(-50%) rotate(var(--angle));
+  background: linear-gradient(to top, #17100d 0%, #2a1d17 72%, #17100d 100%);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.22);
+}
+
+.vu-needle-shadow {
+  width: 1.2px;
+  opacity: 0.14;
+  background: rgba(45, 24, 14, 0.62);
+  transform: translate(calc(-50% + var(--shadow-x)), var(--shadow-y)) rotate(var(--angle));
+  filter: blur(0.7px);
 }
 
 .tape-shadow,
