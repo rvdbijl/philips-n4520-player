@@ -1,7 +1,10 @@
+import * as THREE from "./assets/three.module.min.js";
+
 const audio = document.getElementById("audio");
 const fileInput = document.getElementById("fileInput");
 const trackName = document.getElementById("trackName");
 const deck = document.getElementById("deck");
+const reelCanvas = document.getElementById("reelCanvas");
 const leftReel = document.getElementById("leftReel");
 const rightReel = document.getElementById("rightReel");
 const leftPack = document.getElementById("leftPack");
@@ -61,9 +64,227 @@ const pinchRollerDiameterIn = 1.15;
 const vuCalibrationDb = 15;
 const meterMinDb = -30;
 const meterMaxDb = 6;
+const referenceWidth = 1600;
+const referenceHeight = 1200;
+const reelTextureSize = 596;
+const leftReelCenter = { x: 493, y: 346 };
+const rightReelCenter = { x: 1098, y: 346 };
+const rollerRestCenter = { x: 914, y: 821 };
+const rollerPlayCenter = { x: 914, y: 796 };
+
+const reel3d = {
+  ready: false,
+  renderer: null,
+  scene: null,
+  camera: null,
+  left: null,
+  right: null,
+  roller: null,
+  leftPack: null,
+  rightPack: null,
+};
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function stageY(y) {
+  return referenceHeight - y;
+}
+
+function createShadowTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  const gradient = ctx.createRadialGradient(118, 122, 22, 128, 128, 120);
+  gradient.addColorStop(0, "rgba(0, 0, 0, 0.34)");
+  gradient.addColorStop(0.52, "rgba(0, 0, 0, 0.2)");
+  gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  return new THREE.CanvasTexture(canvas);
+}
+
+function createReel(texture, x, y) {
+  const group = new THREE.Group();
+  group.position.set(x, stageY(y), 16);
+
+  const shadowMap = createShadowTexture();
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(reelTextureSize * 1.08, reelTextureSize * 1.08),
+    new THREE.MeshBasicMaterial({
+      map: shadowMap,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.86,
+    }),
+  );
+  shadow.position.set(8, -12, -34);
+  group.add(shadow);
+
+  const pack = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 128),
+    new THREE.MeshStandardMaterial({
+      color: 0x4c281a,
+      roughness: 0.72,
+      metalness: 0.04,
+    }),
+  );
+  pack.position.z = -5;
+  group.add(pack);
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(reelTextureSize / 2 - 2, 4.5, 16, 180),
+    new THREE.MeshStandardMaterial({
+      color: 0xc8c9c2,
+      metalness: 0.9,
+      roughness: 0.2,
+    }),
+  );
+  rim.position.z = 7;
+  group.add(rim);
+
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(reelTextureSize, reelTextureSize),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      alphaTest: 0.05,
+      depthWrite: false,
+    }),
+  );
+  face.position.z = 10;
+  group.add(face);
+
+  reel3d.scene.add(group);
+  return { group, pack };
+}
+
+function createRoller(texture) {
+  const group = new THREE.Group();
+  group.position.set(rollerRestCenter.x, stageY(rollerRestCenter.y), 40);
+
+  const shadowMap = createShadowTexture();
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(95, 95),
+    new THREE.MeshBasicMaterial({
+      map: shadowMap,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.78,
+    }),
+  );
+  shadow.position.set(5, -6, -18);
+  group.add(shadow);
+
+  const wheel = new THREE.Mesh(
+    new THREE.CylinderGeometry(38, 38, 12, 96),
+    new THREE.MeshStandardMaterial({
+      color: 0xd8d8cf,
+      metalness: 0.88,
+      roughness: 0.24,
+    }),
+  );
+  wheel.rotation.x = Math.PI / 2;
+  wheel.position.z = 0;
+  group.add(wheel);
+
+  const textureFace = new THREE.Mesh(
+    new THREE.PlaneGeometry(78, 78),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      alphaTest: 0.05,
+      depthWrite: false,
+    }),
+  );
+  textureFace.position.z = 8;
+  group.add(textureFace);
+
+  reel3d.scene.add(group);
+  return group;
+}
+
+function resizeReelRenderer() {
+  if (!reel3d.renderer) return;
+  const { clientWidth, clientHeight } = reelCanvas;
+  reel3d.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  reel3d.renderer.setSize(clientWidth, clientHeight, false);
+}
+
+function initReel3d() {
+  if (!reelCanvas) return;
+
+  reel3d.renderer = new THREE.WebGLRenderer({
+    canvas: reelCanvas,
+    alpha: true,
+    antialias: true,
+  });
+  reel3d.renderer.setClearColor(0x000000, 0);
+  reel3d.scene = new THREE.Scene();
+  reel3d.camera = new THREE.OrthographicCamera(0, referenceWidth, referenceHeight, 0, -500, 500);
+  reel3d.camera.position.z = 300;
+
+  const ambient = new THREE.AmbientLight(0xffffff, 1.8);
+  reel3d.scene.add(ambient);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+  keyLight.position.set(-260, 420, 500);
+  reel3d.scene.add(keyLight);
+
+  const rimLight = new THREE.DirectionalLight(0xe7f0ff, 1.1);
+  rimLight.position.set(420, 250, 360);
+  reel3d.scene.add(rimLight);
+
+  const loader = new THREE.TextureLoader();
+  Promise.all([
+    loader.loadAsync("assets/left-reel-face.png"),
+    loader.loadAsync("assets/right-reel-face.png"),
+    loader.loadAsync("assets/capstan-roller.png"),
+  ]).then(([leftTexture, rightTexture, rollerTexture]) => {
+    [leftTexture, rightTexture, rollerTexture].forEach((texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 8;
+    });
+    const left = createReel(leftTexture, leftReelCenter.x, leftReelCenter.y);
+    const right = createReel(rightTexture, rightReelCenter.x, rightReelCenter.y);
+    reel3d.left = left.group;
+    reel3d.right = right.group;
+    reel3d.leftPack = left.pack;
+    reel3d.rightPack = right.pack;
+    reel3d.roller = createRoller(rollerTexture);
+    reel3d.ready = true;
+    updateTapePacks(tapeProgress());
+    renderReel3d();
+  });
+
+  resizeReelRenderer();
+  window.addEventListener("resize", resizeReelRenderer);
+}
+
+function setPackRadius(mesh, diameterIn) {
+  if (!mesh) return;
+  const radius = (diameterIn / reelDiameterIn) * (reelTextureSize / 2);
+  mesh.scale.set(radius, radius, 1);
+}
+
+function renderReel3d() {
+  if (!reel3d.ready) return;
+  const leftRad = -THREE.MathUtils.degToRad(reelAngleL);
+  const rightRad = -THREE.MathUtils.degToRad(reelAngleR);
+  const rollerRad = -THREE.MathUtils.degToRad(capstanAngle);
+
+  reel3d.left.rotation.z = leftRad;
+  reel3d.right.rotation.z = rightRad;
+
+  const engaged = mode === "play" && !audio.paused;
+  const target = engaged ? rollerPlayCenter : rollerRestCenter;
+  reel3d.roller.position.x += (target.x - reel3d.roller.position.x) * 0.28;
+  reel3d.roller.position.y += (stageY(target.y) - reel3d.roller.position.y) * 0.28;
+  reel3d.roller.rotation.z = rollerRad;
+
+  reel3d.renderer.render(reel3d.scene, reel3d.camera);
 }
 
 function formatTime(seconds) {
@@ -170,10 +391,14 @@ function tapePackDiameter(progress, side) {
 }
 
 function updateTapePacks(progress) {
-  const leftPackSize = (tapePackDiameter(progress, "left") / reelDiameterIn) * 100;
-  const rightPackSize = (tapePackDiameter(progress, "right") / reelDiameterIn) * 100;
+  const leftDiameter = tapePackDiameter(progress, "left");
+  const rightDiameter = tapePackDiameter(progress, "right");
+  const leftPackSize = (leftDiameter / reelDiameterIn) * 100;
+  const rightPackSize = (rightDiameter / reelDiameterIn) * 100;
   leftPack.style.setProperty("--pack", `${leftPackSize}%`);
   rightPack.style.setProperty("--pack", `${rightPackSize}%`);
+  setPackRadius(reel3d.leftPack, leftDiameter);
+  setPackRadius(reel3d.rightPack, rightDiameter);
 }
 
 function transportTapeIps() {
@@ -200,7 +425,7 @@ function updateMotion(dt) {
   const capstanDps = angularDegreesPerSecond(rollerIps, pinchRollerDiameterIn);
 
   reelAngleL -= direction * leftDps * dt;
-  reelAngleR += direction * rightDps * dt;
+  reelAngleR -= direction * rightDps * dt;
   capstanAngle += capstanDps * dt;
   tapeOffset -= direction * linearIps * dt * 10;
 
@@ -209,6 +434,7 @@ function updateMotion(dt) {
   capstan.style.setProperty("--capstan-rot", `${capstanAngle}deg`);
   movingTape.style.setProperty("--tape-offset", `${tapeOffset}`);
   updateTapePacks(progress);
+  renderReel3d();
 }
 
 function tick(now) {
@@ -298,4 +524,5 @@ audio.addEventListener("loadedmetadata", () => {
 });
 
 setMode("stop");
+initReel3d();
 requestAnimationFrame(tick);

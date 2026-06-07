@@ -2,7 +2,7 @@
 
 A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API.
 
-The current visual approach is a photo-backed compositing prototype: the N4520 face is anchored by a reference photo, with animated overlays for the reels, tape path, capstan, VU needles, and peak LEDs. For a public/distributable version, replace `assets/n4520-reference.jpg` with an owned/licensed straight-on deck photograph or a rendered texture pass from a 3D model.
+The current visual approach is a photo-backed compositing prototype: the N4520 face is anchored by a reference photo, with animated overlays for the reels, tape path, capstan, VU needles, and peak LEDs. The reels and pinch/capstan roller are rendered in a transparent Three.js layer so their rotation, lift, rim highlights, and shadows are handled as shallow 3D scene objects instead of flat DOM images. For a public/distributable version, replace `assets/n4520-reference.jpg` with an owned/licensed straight-on deck photograph or a rendered texture pass from a 3D model.
 
 - supply and take-up reel rotation over the real deck geometry
 - tape pack transfer from left reel to right reel
@@ -20,6 +20,11 @@ RPM = tape_speed_inches_per_second / (pi * current_pack_diameter_inches) * 60
 ```
 
 The pack diameter changes by conserved winding area, so a nearly empty reel rotates faster than a nearly full reel. The pinch/capstan roller is a cropped photo asset and only lifts into the tape path while playing.
+
+## Visual References
+
+- Primary front reference: `assets/n4520-reference.jpg`
+- Detail reference for future modeling: https://reverb.com/item/94457214-philips-n4520-reel-to-reel-tape-recorder-1-4-inch-4-track
 
 Open `index.html` in a modern browser and choose a local audio file. Some browsers may require FLAC support from the operating system or browser build.
 

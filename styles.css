@@ -71,12 +71,22 @@ input {
   mix-blend-mode: multiply;
 }
 
+.reel-3d-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .reel-mount {
   position: absolute;
   width: 37.2%;
   aspect-ratio: 1;
   border-radius: 50%;
   filter: drop-shadow(0 13px 18px rgba(0, 0, 0, 0.32));
+  display: none;
 }
 
 .reel-mount-left {
@@ -153,6 +163,7 @@ input {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  z-index: 3;
 }
 
 .tape-shadow,
@@ -189,6 +200,7 @@ input {
   background: url("assets/capstan-roller.png") center / contain no-repeat;
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.48));
   transition: top 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: none;
 }
 
 .deck-photo-stage[data-mode="play"] .capstan {
@@ -208,6 +220,7 @@ input {
   opacity: 0;
   transition: opacity 140ms ease;
   pointer-events: none;
+  z-index: 1;
 }
 
 .deck-photo-stage[data-mode="play"] .roller-rest-cover {
@@ -223,6 +236,7 @@ input {
   width: 9.7%;
   height: 9.2%;
   pointer-events: none;
+  z-index: 4;
 }
 
 .meter-left {
@@ -306,6 +320,7 @@ input {
   background: transparent;
   border-radius: 3px;
   cursor: pointer;
+  z-index: 6;
 }
 
 .hotspot::after {
@@ -369,6 +384,7 @@ input {
   letter-spacing: 0.04em;
   text-shadow: 0 0 7px rgba(87, 224, 74, 0.58);
   pointer-events: none;
+  z-index: 4;
 }
 
 .deck-controls {
@@ -388,6 +404,7 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(10px);
+  z-index: 7;
 }
 
 .file-picker {

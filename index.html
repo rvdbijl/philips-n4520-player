@@ -12,6 +12,7 @@
         <div class="deck-photo-stage" id="deck" data-mode="stop">
           <img class="deck-photo" src="assets/n4520-reference.jpg" alt="Philips N4520 reel to reel deck">
           <div class="photo-vignette" aria-hidden="true"></div>
+          <canvas class="reel-3d-layer" id="reelCanvas" aria-hidden="true"></canvas>
 
           <div class="reel-mount reel-mount-left">
             <div class="photo-reel" id="leftReel">
@@ -44,8 +45,8 @@
           </div>
 
           <svg class="photo-tape-path" viewBox="0 0 1600 1200" preserveAspectRatio="none" aria-hidden="true">
-            <path class="tape-shadow" d="M 500 610 C 575 638 632 651 710 651 L 898 651 C 976 651 1024 637 1095 610"></path>
-            <path class="tape-line" id="movingTape" d="M 500 610 C 575 638 632 651 710 651 L 898 651 C 976 651 1024 637 1095 610"></path>
+            <path class="tape-shadow" d="M 501 612 C 464 650 438 704 410 760 C 463 743 520 721 588 699 C 666 673 737 675 804 688 C 892 706 970 685 1048 714 C 1104 735 1162 752 1192 708 C 1166 663 1134 632 1096 611"></path>
+            <path class="tape-line" id="movingTape" d="M 501 612 C 464 650 438 704 410 760 C 463 743 520 721 588 699 C 666 673 737 675 804 688 C 892 706 970 685 1048 714 C 1104 735 1162 752 1192 708 C 1166 663 1134 632 1096 611"></path>
           </svg>
 
           <div class="roller-rest-cover" aria-hidden="true"></div>
@@ -92,6 +93,6 @@
       </section>
     </main>
 
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
