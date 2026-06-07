@@ -12,6 +12,7 @@ const rightPack = document.getElementById("rightPack");
 const capstan = document.getElementById("capstan");
 const counter = document.getElementById("counter");
 const movingTape = document.getElementById("movingTape");
+const tapeShadow = document.getElementById("tapeShadow");
 
 const buttons = {
   play: document.getElementById("playButton"),
@@ -80,6 +81,9 @@ const reel3d = {
   left: null,
   right: null,
   roller: null,
+  rollerWheel: null,
+  needleL: null,
+  needleR: null,
   leftPack: null,
   rightPack: null,
 };
@@ -106,9 +110,145 @@ function createShadowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-function createReel(texture, x, y) {
+function createBrushedMetalTexture(size = 256) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const cx = size / 2;
+  const cy = size / 2;
+
+  const base = ctx.createRadialGradient(cx * 0.72, cy * 0.68, 4, cx, cy, cx * 0.58);
+  base.addColorStop(0, "#fbfaf0");
+  base.addColorStop(0.18, "#d3d4cf");
+  base.addColorStop(0.38, "#8f928e");
+  base.addColorStop(0.62, "#f1f1e9");
+  base.addColorStop(1, "#8a8c86");
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  for (let i = 0; i < 120; i += 1) {
+    ctx.rotate((Math.PI * 2) / 120);
+    ctx.strokeStyle = i % 2 === 0 ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(cx * 0.92, 0);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.beginPath();
+  ctx.arc(cx, cy, cx - 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function createTapePackTexture(size = 512) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const cx = size / 2;
+  const cy = size / 2;
+
+  const base = ctx.createRadialGradient(cx, cy, 18, cx, cy, cx * 0.98);
+  base.addColorStop(0, "#5a3324");
+  base.addColorStop(0.45, "#47261b");
+  base.addColorStop(1, "#24120d");
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.strokeStyle = "rgba(219, 151, 92, 0.24)";
+  for (let r = 18; r < cx * 0.98; r += 3.2) {
+    ctx.lineWidth = r % 9 < 3.2 ? 1.0 : 0.45;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.18)";
+  for (let r = 20; r < cx * 0.98; r += 7.8) {
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.beginPath();
+  ctx.arc(cx, cy, cx - 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function createSpindleAssembly() {
   const group = new THREE.Group();
-  group.position.set(x, stageY(y), 16);
+  group.position.z = 22;
+
+  const black = new THREE.MeshStandardMaterial({
+    color: 0x080909,
+    metalness: 0.52,
+    roughness: 0.34,
+  });
+  const darkRubber = new THREE.MeshStandardMaterial({
+    color: 0x111313,
+    metalness: 0.18,
+    roughness: 0.58,
+  });
+  const metal = new THREE.MeshStandardMaterial({
+    map: createBrushedMetalTexture(256),
+    metalness: 0.82,
+    roughness: 0.23,
+  });
+
+  const adapter = new THREE.Mesh(new THREE.CylinderGeometry(72, 76, 22, 96), darkRubber);
+  adapter.rotation.x = Math.PI / 2;
+  adapter.position.z = 0;
+  group.add(adapter);
+
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(58, 8, 18, 96), metal);
+  collar.position.z = 13;
+  group.add(collar);
+
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(36, 42, 24, 96), black);
+  cap.rotation.x = Math.PI / 2;
+  cap.position.z = 24;
+  group.add(cap);
+
+  const button = new THREE.Mesh(new THREE.CylinderGeometry(14, 18, 14, 72), metal);
+  button.rotation.x = Math.PI / 2;
+  button.position.z = 45;
+  group.add(button);
+
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2;
+    const tab = new THREE.Mesh(new THREE.BoxGeometry(12, 42, 9), black);
+    tab.position.set(Math.cos(angle) * 74, Math.sin(angle) * 74, 15);
+    tab.rotation.z = angle;
+    group.add(tab);
+  }
+
+  return group;
+}
+
+function createReel(texture, x, y) {
+  const mount = new THREE.Group();
+  mount.position.set(x, stageY(y), 16);
+
+  const rotor = new THREE.Group();
+  mount.add(rotor);
 
   const shadowMap = createShadowTexture();
   const shadow = new THREE.Mesh(
@@ -121,18 +261,18 @@ function createReel(texture, x, y) {
     }),
   );
   shadow.position.set(8, -12, -34);
-  group.add(shadow);
+  mount.add(shadow);
 
   const pack = new THREE.Mesh(
     new THREE.CircleGeometry(1, 128),
     new THREE.MeshStandardMaterial({
-      color: 0x4c281a,
+      map: createTapePackTexture(),
       roughness: 0.72,
       metalness: 0.04,
     }),
   );
   pack.position.z = -5;
-  group.add(pack);
+  rotor.add(pack);
 
   const rim = new THREE.Mesh(
     new THREE.TorusGeometry(reelTextureSize / 2 - 2, 4.5, 16, 180),
@@ -143,7 +283,7 @@ function createReel(texture, x, y) {
     }),
   );
   rim.position.z = 7;
-  group.add(rim);
+  rotor.add(rim);
 
   const face = new THREE.Mesh(
     new THREE.PlaneGeometry(reelTextureSize, reelTextureSize),
@@ -155,13 +295,15 @@ function createReel(texture, x, y) {
     }),
   );
   face.position.z = 10;
-  group.add(face);
+  rotor.add(face);
 
-  reel3d.scene.add(group);
-  return { group, pack };
+  rotor.add(createSpindleAssembly());
+
+  reel3d.scene.add(mount);
+  return { mount, rotor, pack };
 }
 
-function createRoller(texture) {
+function createRoller() {
   const group = new THREE.Group();
   group.position.set(rollerRestCenter.x, stageY(rollerRestCenter.y), 40);
 
@@ -178,29 +320,101 @@ function createRoller(texture) {
   shadow.position.set(5, -6, -18);
   group.add(shadow);
 
-  const wheel = new THREE.Mesh(
-    new THREE.CylinderGeometry(38, 38, 12, 96),
+  const wheelAssembly = new THREE.Group();
+  group.add(wheelAssembly);
+
+  const rubber = new THREE.Mesh(
+    new THREE.TorusGeometry(39, 4.2, 16, 96),
     new THREE.MeshStandardMaterial({
-      color: 0xd8d8cf,
-      metalness: 0.88,
-      roughness: 0.24,
+      color: 0x171a19,
+      metalness: 0.16,
+      roughness: 0.54,
     }),
   );
-  wheel.rotation.x = Math.PI / 2;
-  wheel.position.z = 0;
-  group.add(wheel);
+  rubber.position.z = 4;
+  wheelAssembly.add(rubber);
 
-  const textureFace = new THREE.Mesh(
-    new THREE.PlaneGeometry(78, 78),
+  const metalFace = new THREE.Mesh(
+    new THREE.CylinderGeometry(35, 35, 16, 128),
+    new THREE.MeshStandardMaterial({
+      map: createBrushedMetalTexture(256),
+      metalness: 0.88,
+      roughness: 0.22,
+    }),
+  );
+  metalFace.rotation.x = Math.PI / 2;
+  metalFace.position.z = 7;
+  wheelAssembly.add(metalFace);
+
+  const spindle = new THREE.Mesh(
+    new THREE.CylinderGeometry(7, 9, 8, 48),
+    new THREE.MeshStandardMaterial({
+      color: 0x383b38,
+      metalness: 0.75,
+      roughness: 0.25,
+    }),
+  );
+  spindle.rotation.x = Math.PI / 2;
+  spindle.position.z = 18;
+  wheelAssembly.add(spindle);
+
+  reel3d.scene.add(group);
+  return { group, wheel: wheelAssembly };
+}
+
+function createMeterNeedle(x, y) {
+  const group = new THREE.Group();
+  group.position.set(x, stageY(y), 92);
+
+  const shape = new THREE.Shape();
+  shape.moveTo(-1.15, 0);
+  shape.lineTo(1.15, 0);
+  shape.lineTo(0.72, 64);
+  shape.lineTo(-0.72, 64);
+  shape.lineTo(-1.15, 0);
+
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: 1.2,
+    bevelEnabled: true,
+    bevelThickness: 0.25,
+    bevelSize: 0.2,
+    bevelSegments: 2,
+  });
+
+  const shadow = new THREE.Mesh(
+    geometry,
     new THREE.MeshBasicMaterial({
-      map: texture,
+      color: 0x000000,
       transparent: true,
-      alphaTest: 0.05,
+      opacity: 0.32,
       depthWrite: false,
     }),
   );
-  textureFace.position.z = 8;
-  group.add(textureFace);
+  shadow.position.set(1.4, 4.8, -5);
+  group.add(shadow);
+
+  const pointer = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color: 0x231813,
+      metalness: 0.28,
+      roughness: 0.42,
+    }),
+  );
+  pointer.position.z = 0;
+  group.add(pointer);
+
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(5.0, 5.6, 2.2, 48),
+    new THREE.MeshStandardMaterial({
+      color: 0x15100d,
+      metalness: 0.45,
+      roughness: 0.38,
+    }),
+  );
+  cap.rotation.x = Math.PI / 2;
+  cap.position.z = 3;
+  group.add(cap);
 
   reel3d.scene.add(group);
   return group;
@@ -220,6 +434,7 @@ function initReel3d() {
     canvas: reelCanvas,
     alpha: true,
     antialias: true,
+    preserveDrawingBuffer: true,
   });
   reel3d.renderer.setClearColor(0x000000, 0);
   reel3d.scene = new THREE.Scene();
@@ -241,19 +456,22 @@ function initReel3d() {
   Promise.all([
     loader.loadAsync("assets/left-reel-face.png"),
     loader.loadAsync("assets/right-reel-face.png"),
-    loader.loadAsync("assets/capstan-roller.png"),
-  ]).then(([leftTexture, rightTexture, rollerTexture]) => {
-    [leftTexture, rightTexture, rollerTexture].forEach((texture) => {
+  ]).then(([leftTexture, rightTexture]) => {
+    [leftTexture, rightTexture].forEach((texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = 8;
     });
     const left = createReel(leftTexture, leftReelCenter.x, leftReelCenter.y);
     const right = createReel(rightTexture, rightReelCenter.x, rightReelCenter.y);
-    reel3d.left = left.group;
-    reel3d.right = right.group;
+    reel3d.left = left.rotor;
+    reel3d.right = right.rotor;
     reel3d.leftPack = left.pack;
     reel3d.rightPack = right.pack;
-    reel3d.roller = createRoller(rollerTexture);
+    const roller = createRoller();
+    reel3d.roller = roller.group;
+    reel3d.rollerWheel = roller.wheel;
+    reel3d.needleL = createMeterNeedle(697, 975);
+    reel3d.needleR = createMeterNeedle(869, 975);
     reel3d.ready = true;
     updateTapePacks(tapeProgress());
     renderReel3d();
@@ -282,7 +500,9 @@ function renderReel3d() {
   const target = engaged ? rollerPlayCenter : rollerRestCenter;
   reel3d.roller.position.x += (target.x - reel3d.roller.position.x) * 0.28;
   reel3d.roller.position.y += (stageY(target.y) - reel3d.roller.position.y) * 0.28;
-  reel3d.roller.rotation.z = rollerRad;
+  reel3d.rollerWheel.rotation.z = rollerRad;
+  reel3d.needleL.rotation.z = -THREE.MathUtils.degToRad(meterAngle(levelL));
+  reel3d.needleR.rotation.z = -THREE.MathUtils.degToRad(meterAngle(levelR));
 
   reel3d.renderer.render(reel3d.scene, reel3d.camera);
 }
@@ -390,6 +610,38 @@ function tapePackDiameter(progress, side) {
   return Math.sqrt(packedArea);
 }
 
+function packRadiusPx(diameterIn) {
+  return (diameterIn / reelDiameterIn) * (reelTextureSize / 2);
+}
+
+function pointOnPack(center, radius, degrees) {
+  const radians = THREE.MathUtils.degToRad(degrees);
+  return {
+    x: center.x + Math.cos(radians) * radius,
+    y: center.y + Math.sin(radians) * radius,
+  };
+}
+
+function updateTapePath(progress) {
+  const leftRadius = packRadiusPx(tapePackDiameter(progress, "left"));
+  const rightRadius = packRadiusPx(tapePackDiameter(progress, "right"));
+  const leftExit = pointOnPack(leftReelCenter, leftRadius, 82);
+  const rightEntry = pointOnPack(rightReelCenter, rightRadius, 108);
+
+  const d = [
+    `M ${leftExit.x.toFixed(1)} ${leftExit.y.toFixed(1)}`,
+    `C ${(leftExit.x - 48).toFixed(1)} ${(leftExit.y + 55).toFixed(1)} 455.0 717.0 410.0 760.0`,
+    "C 466.0 744.0 524.0 721.0 590.0 699.0",
+    "C 672.0 672.0 739.0 681.0 804.0 692.0",
+    "C 890.0 707.0 958.0 691.0 1045.0 714.0",
+    "C 1114.0 733.0 1162.0 751.0 1192.0 708.0",
+    `C 1166.0 664.0 ${(rightEntry.x + 55).toFixed(1)} ${(rightEntry.y + 50).toFixed(1)} ${rightEntry.x.toFixed(1)} ${rightEntry.y.toFixed(1)}`,
+  ].join(" ");
+
+  movingTape.setAttribute("d", d);
+  tapeShadow.setAttribute("d", d);
+}
+
 function updateTapePacks(progress) {
   const leftDiameter = tapePackDiameter(progress, "left");
   const rightDiameter = tapePackDiameter(progress, "right");
@@ -399,6 +651,7 @@ function updateTapePacks(progress) {
   rightPack.style.setProperty("--pack", `${rightPackSize}%`);
   setPackRadius(reel3d.leftPack, leftDiameter);
   setPackRadius(reel3d.rightPack, rightDiameter);
+  updateTapePath(progress);
 }
 
 function transportTapeIps() {

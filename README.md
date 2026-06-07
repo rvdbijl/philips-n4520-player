@@ -24,7 +24,26 @@ The pack diameter changes by conserved winding area, so a nearly empty reel rota
 ## Visual References
 
 - Primary front reference: `assets/n4520-reference.jpg`
+- VU meter close-up reference: `assets/n4520-vu-reference.jpg`
 - Detail reference for future modeling: https://reverb.com/item/94457214-philips-n4520-reel-to-reel-tape-recorder-1-4-inch-4-track
+
+## Verification
+
+Install dependencies once:
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+With the local static server running on `http://localhost:4173/`:
+
+```bash
+npm run check
+npm test
+```
+
+The Playwright test captures `test-results/n4520-render.png` for visual inspection.
 
 Open `index.html` in a modern browser and choose a local audio file. Some browsers may require FLAC support from the operating system or browser build.
 
