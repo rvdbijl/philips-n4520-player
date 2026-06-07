@@ -10,9 +10,15 @@
     <main class="app-shell">
       <section class="viewer" aria-label="Philips N4520 reel to reel visualization">
         <div class="deck-photo-stage" id="deck" data-mode="stop">
-          <img class="deck-photo" src="assets/n4520-deck-base-no-reels-powered-vu.png" alt="Philips N4520 reel to reel deck">
+          <img class="deck-photo" src="assets/n4520-deck-base-no-transport.png" alt="Philips N4520 reel to reel deck">
           <div class="photo-vignette" aria-hidden="true"></div>
           <canvas class="reel-3d-layer" id="reelCanvas" aria-hidden="true"></canvas>
+          <img class="transport-photo tensioner-photo tensioner-photo-left" id="tensionerLeft" src="assets/tensioner-roller-left.png" alt="">
+          <img class="transport-photo tensioner-photo tensioner-photo-right" id="tensionerRight" src="assets/tensioner-roller-left.png" alt="">
+          <div class="transport-photo pinch-roller-photo" id="pinchRollerPhoto" aria-hidden="true">
+            <img class="pinch-roller-body" src="assets/pinch-roller.png" alt="">
+            <img class="pinch-roller-face" src="assets/pinch-roller.png" alt="">
+          </div>
 
           <div class="reel-mount reel-mount-left">
             <div class="photo-reel" id="leftReel">
@@ -52,6 +58,7 @@
           <div class="roller-rest-cover" aria-hidden="true"></div>
           <div class="capstan" id="capstan" aria-hidden="true"></div>
           <div class="pinch-roller" aria-hidden="true"></div>
+          <div class="head-assembly-occluder" aria-hidden="true"></div>
 
           <div class="vu-window vu-window-left" aria-hidden="true">
             <span class="vu-needle-shadow" id="needleShadowL"></span>
@@ -76,9 +83,9 @@
           <button class="hotspot transport-hotspot play" id="playButton" aria-label="play"></button>
           <button class="hotspot transport-hotspot pause" id="pauseButton" aria-label="pause"></button>
           <button class="hotspot transport-hotspot ff" id="ffButton" aria-label="fast forward"></button>
-          <button class="hotspot transport-hotspot rec" id="recButton" aria-label="record arm"></button>
+          <span class="pause-indicator" id="pauseLed" aria-hidden="true"></span>
 
-          <div class="counter-overlay" id="counter">00:00.0</div>
+          <div class="counter-overlay" id="counter" aria-label="elapsed time"></div>
 
           <div class="deck-controls">
             <label class="file-picker">
@@ -92,7 +99,6 @@
               <button class="speed" data-speed="3.75">3 3/4</button>
             </div>
             <button class="utility" id="zeroButton">zero</button>
-            <button class="utility" id="cueButton">cue</button>
           </div>
 
           <audio id="audio" preload="metadata"></audio>
