@@ -11,6 +11,16 @@ The current visual approach is a photo-backed compositing prototype: the N4520 f
 - +3 dB and +6 dB peak LEDs
 - basic transport controls
 
+## Motion Model
+
+The reel animation uses the N4520's 10.5 inch / 26.5 cm maximum reel size and the selected IPS speed. Reel angular speed is calculated from the current tape pack diameter:
+
+```text
+RPM = tape_speed_inches_per_second / (pi * current_pack_diameter_inches) * 60
+```
+
+The pack diameter changes by conserved winding area, so a nearly empty reel rotates faster than a nearly full reel. The pinch/capstan roller is a cropped photo asset and only lifts into the tape path while playing.
+
 Open `index.html` in a modern browser and choose a local audio file. Some browsers may require FLAC support from the operating system or browser build.
 
 ## Project Shape

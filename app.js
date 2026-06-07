@@ -48,13 +48,19 @@ let capstanAngle = 0;
 let tapeOffset = 0;
 let lastFrame = performance.now();
 let zeroOffset = 0;
-let levelL = 0;
-let levelR = 0;
-let peakL = 0;
-let peakR = 0;
+let levelL = -60;
+let levelR = -60;
+let peakL = -60;
+let peakR = -60;
 
-const reelMinPack = 27;
-const reelMaxPack = 64;
+const reelDiameterIn = 10.5;
+const hubDiameterIn = 3.0;
+const fullTapeDiameterIn = 9.35;
+const windingSpeedIps = 90;
+const pinchRollerDiameterIn = 1.15;
+const vuCalibrationDb = 15;
+const meterMinDb = -30;
+const meterMaxDb = 6;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -112,34 +118,40 @@ function rms(buffer) {
   return Math.sqrt(sum / buffer.length);
 }
 
-function meterAngle(level) {
-  const shaped = Math.pow(clamp(level, 0, 1), 0.58);
-  return -42 + shaped * 80;
+function rmsToVuDb(value) {
+  if (value <= 0.00001) return -60;
+  return 20 * Math.log10(value) + vuCalibrationDb;
+}
+
+function meterAngle(dbVu) {
+  const normalized = clamp((dbVu - meterMinDb) / (meterMaxDb - meterMinDb), 0, 1);
+  const shaped = Math.pow(normalized, 0.9);
+  return -43 + shaped * 78;
 }
 
 function updateMeters(dt) {
-  let rawL = 0;
-  let rawR = 0;
+  let rawL = -60;
+  let rawR = -60;
 
   if (!audio.paused && analyserL && analyserR) {
     analyserL.getByteTimeDomainData(dataL);
     analyserR.getByteTimeDomainData(dataR);
-    rawL = rms(dataL) * 3.8;
-    rawR = rms(dataR) * 3.8;
+    rawL = rmsToVuDb(rms(dataL));
+    rawR = rmsToVuDb(rms(dataR));
   }
 
   levelL += (rawL - levelL) * Math.min(1, dt * 9);
   levelR += (rawR - levelR) * Math.min(1, dt * 9);
-  peakL = Math.max(levelL, peakL - dt * 0.9);
-  peakR = Math.max(levelR, peakR - dt * 0.9);
+  peakL = Math.max(levelL, peakL - dt * 14);
+  peakR = Math.max(levelR, peakR - dt * 14);
 
   needles.left.style.setProperty("--angle", `${meterAngle(levelL)}deg`);
   needles.right.style.setProperty("--angle", `${meterAngle(levelR)}deg`);
 
-  leds.left3.classList.toggle("on", peakL > 0.64);
-  leds.left6.classList.toggle("on", peakL > 0.82);
-  leds.right3.classList.toggle("on", peakR > 0.64);
-  leds.right6.classList.toggle("on", peakR > 0.82);
+  leds.left3.classList.toggle("on", peakL >= 3);
+  leds.left6.classList.toggle("on", peakL >= 6);
+  leds.right3.classList.toggle("on", peakR >= 3);
+  leds.right6.classList.toggle("on", peakR >= 6);
 }
 
 function tapeProgress() {
@@ -147,32 +159,50 @@ function tapeProgress() {
   return clamp(audio.currentTime / duration, 0, 1);
 }
 
+function tapePackDiameter(progress, side) {
+  const hubArea = hubDiameterIn * hubDiameterIn;
+  const fullArea = fullTapeDiameterIn * fullTapeDiameterIn;
+  const tapeArea = fullArea - hubArea;
+  const packedArea = side === "left"
+    ? fullArea - progress * tapeArea
+    : hubArea + progress * tapeArea;
+  return Math.sqrt(packedArea);
+}
+
 function updateTapePacks(progress) {
-  const leftPackSize = reelMaxPack - progress * (reelMaxPack - reelMinPack);
-  const rightPackSize = reelMinPack + progress * (reelMaxPack - reelMinPack);
+  const leftPackSize = (tapePackDiameter(progress, "left") / reelDiameterIn) * 100;
+  const rightPackSize = (tapePackDiameter(progress, "right") / reelDiameterIn) * 100;
   leftPack.style.setProperty("--pack", `${leftPackSize}%`);
   rightPack.style.setProperty("--pack", `${rightPackSize}%`);
 }
 
-function transportScalar() {
-  if (mode === "rewind") return -5.5;
-  if (mode === "ff") return 5.5;
-  if (mode === "play" && !audio.paused) return speedIps / 7.5;
+function transportTapeIps() {
+  if (mode === "rewind") return -windingSpeedIps;
+  if (mode === "ff") return windingSpeedIps;
+  if (mode === "play" && !audio.paused) return speedIps;
   return 0;
+}
+
+function angularDegreesPerSecond(linearIps, diameterIn) {
+  return (linearIps / (Math.PI * diameterIn)) * 360;
 }
 
 function updateMotion(dt) {
   const progress = tapeProgress();
-  const scalar = transportScalar();
-  const leftPackSize = reelMaxPack - progress * (reelMaxPack - reelMinPack);
-  const rightPackSize = reelMinPack + progress * (reelMaxPack - reelMinPack);
-  const leftRate = scalar * (105 / Math.max(24, leftPackSize));
-  const rightRate = scalar * (105 / Math.max(24, rightPackSize));
+  const tapeIps = transportTapeIps();
+  const direction = Math.sign(tapeIps);
+  const linearIps = Math.abs(tapeIps);
+  const leftDiameter = tapePackDiameter(progress, "left");
+  const rightDiameter = tapePackDiameter(progress, "right");
+  const leftDps = angularDegreesPerSecond(linearIps, leftDiameter);
+  const rightDps = angularDegreesPerSecond(linearIps, rightDiameter);
+  const rollerIps = mode === "play" && !audio.paused ? speedIps : 0;
+  const capstanDps = angularDegreesPerSecond(rollerIps, pinchRollerDiameterIn);
 
-  reelAngleL -= leftRate * dt * 250;
-  reelAngleR += rightRate * dt * 250;
-  capstanAngle += scalar * dt * 520;
-  tapeOffset -= scalar * dt * 90;
+  reelAngleL -= direction * leftDps * dt;
+  reelAngleR += direction * rightDps * dt;
+  capstanAngle += capstanDps * dt;
+  tapeOffset -= direction * linearIps * dt * 10;
 
   leftReel.style.setProperty("--rot", `${reelAngleL}deg`);
   rightReel.style.setProperty("--rot", `${reelAngleR}deg`);
