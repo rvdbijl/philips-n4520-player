@@ -8,129 +8,85 @@
   </head>
   <body>
     <main class="app-shell">
-      <section class="deck-stage" aria-label="Philips N4520 reel to reel visualization">
-        <div class="deck" id="deck">
-          <div class="top-shadow"></div>
+      <section class="viewer" aria-label="Philips N4520 reel to reel visualization">
+        <div class="deck-photo-stage" id="deck" data-mode="stop">
+          <img class="deck-photo" src="assets/n4520-reference.jpg" alt="Philips N4520 reel to reel deck">
+          <div class="photo-vignette" aria-hidden="true"></div>
 
-          <header class="brand-row">
-            <div class="brand">
-              <span class="brand-mark">PHILIPS</span>
-              <span class="model">N4520</span>
-            </div>
-            <div class="speed-panel">
-              <button class="speed active" data-speed="15">15</button>
-              <button class="speed" data-speed="7.5">7 1/2</button>
-              <button class="speed" data-speed="3.75">3 3/4</button>
-              <span class="ips">ips</span>
-            </div>
-          </header>
-
-          <div class="reel-field">
-            <div class="reel-side left-side">
-              <div class="reel-label">SUPPLY</div>
-              <div class="reel reel-left" id="leftReel">
-                <div class="reel-ring outer"></div>
-                <div class="reel-ring inner"></div>
-                <div class="reel-spokes">
-                  <span></span><span></span><span></span><span></span><span></span><span></span>
-                </div>
-                <div class="tape-pack" id="leftPack"></div>
-                <div class="reel-hub"></div>
-                <div class="nab-lock"></div>
-              </div>
-            </div>
-
-            <div class="tape-path" aria-hidden="true">
-              <svg class="tape-svg" viewBox="0 0 520 170" preserveAspectRatio="none">
-                <path class="tape-line tape-back" d="M 2 30 C 120 34 160 96 228 96 L 292 96 C 360 96 404 34 518 30"></path>
-                <path class="tape-line tape-front" id="movingTape" d="M 2 30 C 120 34 160 96 228 96 L 292 96 C 360 96 404 34 518 30"></path>
-              </svg>
-              <div class="guide guide-left"></div>
-              <div class="guide guide-right"></div>
-              <div class="tension tension-left"></div>
-              <div class="tension tension-right"></div>
-              <div class="head-block">
-                <div class="head erase"></div>
-                <div class="head record"></div>
-                <div class="head play"></div>
-                <div class="head-labels">
-                  <span>erase</span><span>rec</span><span>play</span>
-                </div>
-              </div>
-              <div class="capstan" id="capstan"></div>
-              <div class="pinch"></div>
-            </div>
-
-            <div class="reel-side right-side">
-              <div class="reel-label">TAKE-UP</div>
-              <div class="reel reel-right" id="rightReel">
-                <div class="reel-ring outer"></div>
-                <div class="reel-ring inner"></div>
-                <div class="reel-spokes">
-                  <span></span><span></span><span></span><span></span><span></span><span></span>
-                </div>
-                <div class="tape-pack" id="rightPack"></div>
-                <div class="reel-hub"></div>
-                <div class="nab-lock"></div>
-              </div>
+          <div class="reel-mount reel-mount-left">
+            <div class="photo-reel" id="leftReel">
+              <div class="tape-pack photo-pack" id="leftPack"></div>
+              <span class="reel-slot slot-a"></span>
+              <span class="reel-slot slot-b"></span>
+              <span class="reel-slot slot-c"></span>
+              <span class="reel-brand">PHILIPS</span>
+              <span class="reel-screw screw-a"></span>
+              <span class="reel-screw screw-b"></span>
+              <span class="reel-screw screw-c"></span>
+              <span class="reel-hub"></span>
+              <span class="nab-lock"></span>
             </div>
           </div>
 
-          <section class="lower-panel">
-            <div class="counter-cluster">
-              <div class="counter-label">electronic tape counter</div>
-              <div class="counter" id="counter">00:00.0</div>
-              <div class="counter-controls">
-                <button id="zeroButton">zero</button>
-                <button id="cueButton">cue</button>
-              </div>
+          <div class="reel-mount reel-mount-right">
+            <div class="photo-reel" id="rightReel">
+              <div class="tape-pack photo-pack" id="rightPack"></div>
+              <span class="reel-slot slot-a"></span>
+              <span class="reel-slot slot-b"></span>
+              <span class="reel-slot slot-c"></span>
+              <span class="reel-brand">PHILIPS</span>
+              <span class="reel-screw screw-a"></span>
+              <span class="reel-screw screw-b"></span>
+              <span class="reel-screw screw-c"></span>
+              <span class="reel-hub"></span>
+              <span class="nab-lock"></span>
             </div>
+          </div>
 
-            <div class="transport">
-              <button class="transport-btn rewind" id="rewindButton" aria-label="rewind"></button>
-              <button class="transport-btn stop" id="stopButton" aria-label="stop"></button>
-              <button class="transport-btn play" id="playButton" aria-label="play"></button>
-              <button class="transport-btn pause" id="pauseButton" aria-label="pause"></button>
-              <button class="transport-btn ff" id="ffButton" aria-label="fast forward"></button>
-              <button class="transport-btn rec" id="recButton" aria-label="record arm"></button>
-            </div>
+          <svg class="photo-tape-path" viewBox="0 0 1600 1200" preserveAspectRatio="none" aria-hidden="true">
+            <path class="tape-shadow" d="M 500 610 C 575 638 632 651 710 651 L 898 651 C 976 651 1024 637 1095 610"></path>
+            <path class="tape-line" id="movingTape" d="M 500 610 C 575 638 632 651 710 651 L 898 651 C 976 651 1024 637 1095 610"></path>
+          </svg>
 
-            <div class="meter-bank">
-              <div class="meter" data-channel="left">
-                <div class="meter-scale">
-                  <span>-20</span><span>-10</span><span>-5</span><span>0</span><span>+3</span><span>+6</span>
-                </div>
-                <div class="needle" id="needleL"></div>
-                <div class="meter-glass"></div>
-                <div class="meter-name">left</div>
-                <div class="peak-leds">
-                  <span class="led led3" id="ledL3">+3</span>
-                  <span class="led led6" id="ledL6">+6</span>
-                </div>
-              </div>
-              <div class="meter" data-channel="right">
-                <div class="meter-scale">
-                  <span>-20</span><span>-10</span><span>-5</span><span>0</span><span>+3</span><span>+6</span>
-                </div>
-                <div class="needle" id="needleR"></div>
-                <div class="meter-glass"></div>
-                <div class="meter-name">right</div>
-                <div class="peak-leds">
-                  <span class="led led3" id="ledR3">+3</span>
-                  <span class="led led6" id="ledR6">+6</span>
-                </div>
-              </div>
-            </div>
+          <div class="capstan" id="capstan" aria-hidden="true"></div>
+          <div class="pinch-roller" aria-hidden="true"></div>
 
-            <div class="io-strip">
-              <label class="file-picker">
-                <input id="fileInput" type="file" accept="audio/mpeg,audio/mp3,audio/flac,.mp3,.flac">
-                <span>load MP3 / FLAC</span>
-              </label>
-              <div class="track-readout" id="trackName">No file loaded</div>
-              <audio id="audio" preload="metadata"></audio>
+          <div class="meter-overlay meter-left" aria-hidden="true">
+            <span class="needle" id="needleL"></span>
+            <span class="led led3" id="ledL3">+3</span>
+            <span class="led led6" id="ledL6">+6</span>
+          </div>
+          <div class="meter-overlay meter-right" aria-hidden="true">
+            <span class="needle" id="needleR"></span>
+            <span class="led led3" id="ledR3">+3</span>
+            <span class="led led6" id="ledR6">+6</span>
+          </div>
+
+          <button class="hotspot transport-hotspot rewind" id="rewindButton" aria-label="rewind"></button>
+          <button class="hotspot transport-hotspot stop" id="stopButton" aria-label="stop"></button>
+          <button class="hotspot transport-hotspot play" id="playButton" aria-label="play"></button>
+          <button class="hotspot transport-hotspot pause" id="pauseButton" aria-label="pause"></button>
+          <button class="hotspot transport-hotspot ff" id="ffButton" aria-label="fast forward"></button>
+          <button class="hotspot transport-hotspot rec" id="recButton" aria-label="record arm"></button>
+
+          <div class="counter-overlay" id="counter">00:00.0</div>
+
+          <div class="deck-controls">
+            <label class="file-picker">
+              <input id="fileInput" type="file" accept="audio/mpeg,audio/mp3,audio/flac,.mp3,.flac">
+              <span>Load MP3 / FLAC</span>
+            </label>
+            <div class="track-readout" id="trackName">No file loaded</div>
+            <div class="speed-panel" aria-label="tape speed">
+              <button class="speed active" data-speed="15">15</button>
+              <button class="speed" data-speed="7.5">7 1/2</button>
+              <button class="speed" data-speed="3.75">3 3/4</button>
             </div>
-          </section>
+            <button class="utility" id="zeroButton">zero</button>
+            <button class="utility" id="cueButton">cue</button>
+          </div>
+
+          <audio id="audio" preload="metadata"></audio>
         </div>
       </section>
     </main>

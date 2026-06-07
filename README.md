@@ -1,8 +1,10 @@
 # Philips N4520 Player Visualizer
 
-A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API:
+A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API.
 
-- supply and take-up reel rotation
+The current visual approach is a photo-backed compositing prototype: the N4520 face is anchored by a reference photo, with animated overlays for the reels, tape path, capstan, VU needles, and peak LEDs. For a public/distributable version, replace `assets/n4520-reference.jpg` with an owned/licensed straight-on deck photograph or a rendered texture pass from a 3D model.
+
+- supply and take-up reel rotation over the real deck geometry
 - tape pack transfer from left reel to right reel
 - moving tape path, capstan, and pinch roller
 - stereo VU needles
