@@ -71,9 +71,9 @@ const meterMinAngle = -32;
 const meterMaxAngle = 34;
 const referenceWidth = 1600;
 const referenceHeight = 1200;
-const reelTextureSize = 596;
-const leftReelCenter = { x: 493, y: 346 };
-const rightReelCenter = { x: 1098, y: 346 };
+const reelTextureSize = 540;
+const leftReelCenter = { x: 493, y: 342 };
+const rightReelCenter = { x: 1056, y: 342 };
 const rollerRestCenter = { x: 914, y: 821 };
 const rollerPlayCenter = { x: 914, y: 796 };
 
@@ -273,8 +273,19 @@ function createReel(texture, x, y) {
       metalness: 0.04,
     }),
   );
-  pack.position.z = -5;
+  pack.position.z = -10;
   rotor.add(pack);
+
+  const rearRim = new THREE.Mesh(
+    new THREE.TorusGeometry(reelTextureSize / 2 - 7, 3.2, 14, 180),
+    new THREE.MeshStandardMaterial({
+      color: 0x8f918c,
+      metalness: 0.86,
+      roughness: 0.32,
+    }),
+  );
+  rearRim.position.z = -10;
+  rotor.add(rearRim);
 
   const rim = new THREE.Mesh(
     new THREE.TorusGeometry(reelTextureSize / 2 - 2, 4.5, 16, 180),
@@ -286,6 +297,19 @@ function createReel(texture, x, y) {
   );
   rim.position.z = 7;
   rotor.add(rim);
+
+  const lipHighlight = new THREE.Mesh(
+    new THREE.TorusGeometry(reelTextureSize / 2 - 13, 1.4, 10, 180),
+    new THREE.MeshStandardMaterial({
+      color: 0xe4e4dc,
+      metalness: 0.92,
+      roughness: 0.18,
+      transparent: true,
+      opacity: 0.72,
+    }),
+  );
+  lipHighlight.position.z = 12;
+  rotor.add(lipHighlight);
 
   const face = new THREE.Mesh(
     new THREE.PlaneGeometry(reelTextureSize, reelTextureSize),
@@ -398,15 +422,14 @@ function initReel3d() {
 
   const loader = new THREE.TextureLoader();
   Promise.all([
-    loader.loadAsync("assets/left-reel-face.png"),
-    loader.loadAsync("assets/right-reel-face.png"),
-  ]).then(([leftTexture, rightTexture]) => {
-    [leftTexture, rightTexture].forEach((texture) => {
+    loader.loadAsync("assets/reel-front-face.png"),
+  ]).then(([reelTexture]) => {
+    [reelTexture].forEach((texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = 8;
     });
-    const left = createReel(leftTexture, leftReelCenter.x, leftReelCenter.y);
-    const right = createReel(rightTexture, rightReelCenter.x, rightReelCenter.y);
+    const left = createReel(reelTexture, leftReelCenter.x, leftReelCenter.y);
+    const right = createReel(reelTexture.clone(), rightReelCenter.x, rightReelCenter.y);
     reel3d.left = left.rotor;
     reel3d.right = right.rotor;
     reel3d.leftPack = left.pack;

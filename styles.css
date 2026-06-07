@@ -123,11 +123,11 @@ input {
 }
 
 .reel-mount-left .photo-reel::before {
-  background-image: url("assets/left-reel-face.png");
+  background-image: none;
 }
 
 .reel-mount-right .photo-reel::before {
-  background-image: url("assets/right-reel-face.png");
+  background-image: none;
 }
 
 .photo-pack {
@@ -196,7 +196,7 @@ input {
   position: absolute;
   left: 50%;
   bottom: -62%;
-  width: 1.6px;
+  width: 0.85px;
   height: 148%;
   border-radius: 999px;
   transform-origin: 50% 100%;
@@ -210,8 +210,8 @@ input {
 }
 
 .vu-needle-shadow {
-  width: 1.2px;
-  opacity: 0.14;
+  width: 0.75px;
+  opacity: 0.1;
   background: rgba(45, 24, 14, 0.62);
   transform: translate(calc(-50% + var(--shadow-x)), var(--shadow-y)) rotate(var(--angle));
   filter: blur(0.7px);
@@ -248,7 +248,7 @@ input {
   aspect-ratio: 1;
   border-radius: 50%;
   transform: translate(-50%, -50%) rotate(var(--capstan-rot));
-  background: url("assets/capstan-roller.png") center / contain no-repeat;
+  background: none;
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.48));
   transition: top 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
   display: none;
