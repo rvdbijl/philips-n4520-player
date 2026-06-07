@@ -363,14 +363,18 @@ function createRoller() {
 }
 
 function createMeterNeedle(x, y) {
-  const group = new THREE.Group();
-  group.position.set(x, stageY(y), 92);
+  const root = new THREE.Group();
+  root.position.set(x, stageY(y), 92);
+  const shadowGroup = new THREE.Group();
+  const pointerGroup = new THREE.Group();
+  root.add(shadowGroup);
+  root.add(pointerGroup);
 
   const shape = new THREE.Shape();
-  shape.moveTo(-1.15, 0);
-  shape.lineTo(1.15, 0);
-  shape.lineTo(0.72, 64);
-  shape.lineTo(-0.72, 64);
+  shape.moveTo(-1.05, 0);
+  shape.lineTo(1.05, 0);
+  shape.lineTo(0.55, 128);
+  shape.lineTo(-0.55, 128);
   shape.lineTo(-1.15, 0);
 
   const geometry = new THREE.ExtrudeGeometry(shape, {
@@ -390,8 +394,8 @@ function createMeterNeedle(x, y) {
       depthWrite: false,
     }),
   );
-  shadow.position.set(1.4, 4.8, -5);
-  group.add(shadow);
+  shadow.position.z = -5;
+  shadowGroup.add(shadow);
 
   const pointer = new THREE.Mesh(
     geometry,
@@ -402,7 +406,7 @@ function createMeterNeedle(x, y) {
     }),
   );
   pointer.position.z = 0;
-  group.add(pointer);
+  pointerGroup.add(pointer);
 
   const cap = new THREE.Mesh(
     new THREE.CylinderGeometry(5.0, 5.6, 2.2, 48),
@@ -414,10 +418,10 @@ function createMeterNeedle(x, y) {
   );
   cap.rotation.x = Math.PI / 2;
   cap.position.z = 3;
-  group.add(cap);
+  pointerGroup.add(cap);
 
-  reel3d.scene.add(group);
-  return group;
+  reel3d.scene.add(root);
+  return { root, pointer: pointerGroup, shadow: shadowGroup };
 }
 
 function resizeReelRenderer() {
@@ -470,8 +474,8 @@ function initReel3d() {
     const roller = createRoller();
     reel3d.roller = roller.group;
     reel3d.rollerWheel = roller.wheel;
-    reel3d.needleL = createMeterNeedle(697, 975);
-    reel3d.needleR = createMeterNeedle(869, 975);
+    reel3d.needleL = createMeterNeedle(718, 1004);
+    reel3d.needleR = createMeterNeedle(898, 1004);
     reel3d.ready = true;
     updateTapePacks(tapeProgress());
     renderReel3d();
@@ -501,10 +505,21 @@ function renderReel3d() {
   reel3d.roller.position.x += (target.x - reel3d.roller.position.x) * 0.28;
   reel3d.roller.position.y += (stageY(target.y) - reel3d.roller.position.y) * 0.28;
   reel3d.rollerWheel.rotation.z = rollerRad;
-  reel3d.needleL.rotation.z = -THREE.MathUtils.degToRad(meterAngle(levelL));
-  reel3d.needleR.rotation.z = -THREE.MathUtils.degToRad(meterAngle(levelR));
+  updateMeterNeedle(reel3d.needleL, meterAngle(levelL));
+  updateMeterNeedle(reel3d.needleR, meterAngle(levelR));
 
   reel3d.renderer.render(reel3d.scene, reel3d.camera);
+}
+
+function updateMeterNeedle(needle, angleDeg) {
+  const angle = -THREE.MathUtils.degToRad(angleDeg);
+  needle.pointer.rotation.z = angle;
+  needle.shadow.rotation.z = angle;
+
+  const shadowRise = 7.2;
+  const sideThrow = Math.sin(angle) * 4.2;
+  const depthSkew = Math.cos(angle) * 1.3;
+  needle.shadow.position.set(sideThrow, shadowRise + depthSkew, -5);
 }
 
 function formatTime(seconds) {

@@ -166,13 +166,21 @@ input {
   z-index: 3;
 }
 
-.vu-photo {
+.vu-photo,
+.vu-frame {
   position: absolute;
   width: 11.45%;
   height: auto;
   pointer-events: none;
-  z-index: 2;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.28));
+}
+
+.vu-photo {
+  z-index: 2;
+}
+
+.vu-frame {
+  z-index: 5;
 }
 
 .vu-photo-left {
@@ -181,6 +189,16 @@ input {
 }
 
 .vu-photo-right {
+  left: 50.35%;
+  top: 72.65%;
+}
+
+.vu-frame-left {
+  left: 39.1%;
+  top: 72.65%;
+}
+
+.vu-frame-right {
   left: 50.35%;
   top: 72.65%;
 }
@@ -255,7 +273,7 @@ input {
   width: 9.7%;
   height: 9.2%;
   pointer-events: none;
-  z-index: 5;
+  z-index: 6;
 }
 
 .meter-left {
