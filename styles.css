@@ -89,10 +89,13 @@ input {
 
 .pinch-roller-photo {
   --pinch-rot: 0deg;
+  --pinch-clip-left: 0%;
+  --pinch-clip-right: 0%;
   width: 5.35%;
   aspect-ratio: 1;
   z-index: 5;
   filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.46));
+  clip-path: polygon(100% var(--pinch-clip-right), 100% 100%, 0 100%, 0 var(--pinch-clip-left));
   transform: translate(-50%, -50%);
 }
 
@@ -107,21 +110,76 @@ input {
 
 .pinch-roller-face {
   clip-path: circle(35% at 48.5% 48%);
+  opacity: 0.2;
   transform-origin: 48.5% 48%;
   transform: rotate(var(--pinch-rot));
 }
 
 .tensioner-photo {
+  --tensioner-rot: 0deg;
   width: 5.3%;
+  aspect-ratio: 1;
   z-index: 5;
   filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.42));
 }
 
+.tensioner-body,
+.tensioner-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tensioner-face {
+  clip-path: circle(31% at 48% 58%);
+  opacity: 0.2;
+  transform-origin: 48% 58%;
+  transform: rotate(var(--tensioner-rot));
+}
+
 .tensioner-photo-left {
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0.75);
 }
 
 .tensioner-photo-right {
+  transform: translate(-50%, -50%) scale(-0.75, 0.75);
+}
+
+.guide-roller-photo {
+  --guide-rot: 0deg;
+  width: 7.95%;
+  aspect-ratio: 180 / 177;
+  z-index: 5;
+  filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.42));
+}
+
+.guide-roller-body,
+.guide-roller-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.guide-roller-face {
+  clip-path: circle(35% at 40% 58%);
+  opacity: 0.2;
+  transform-origin: 40% 58%;
+  transform: rotate(var(--guide-rot));
+}
+
+.guide-roller-photo-left {
+  left: 32.42%;
+  top: 60.5%;
+  transform: translate(-50%, -50%);
+}
+
+.guide-roller-photo-right {
+  left: 67.58%;
+  top: 60.5%;
   transform: translate(-50%, -50%) scaleX(-1);
 }
 
@@ -272,16 +330,16 @@ input {
 }
 
 .tape-shadow {
-  stroke: rgba(0, 0, 0, 0.72);
+  stroke: rgba(32, 14, 8, 0.72);
   stroke-width: 4.6;
-  opacity: 0.18;
+  opacity: 0.24;
 }
 
 .tape-line {
   --tape-offset: 0;
-  stroke: #1f0f09;
+  stroke: #3b2114;
   stroke-width: 3.2;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.32));
+  filter: drop-shadow(0 1px 1px rgba(27, 12, 6, 0.36));
 }
 
 .capstan {
@@ -329,18 +387,7 @@ input {
 }
 
 .head-assembly-occluder {
-  position: absolute;
-  left: 54.1%;
-  top: 64.0%;
-  width: 8.0%;
-  height: 9.4%;
-  z-index: 6;
-  pointer-events: none;
-  background:
-    linear-gradient(148deg, rgba(13, 14, 14, 0.98) 0 59%, rgba(13, 14, 14, 0) 60%),
-    linear-gradient(180deg, rgba(33, 34, 33, 0.72), rgba(4, 5, 5, 0.94));
-  clip-path: polygon(0 0, 100% 0, 100% 32%, 56% 44%, 20% 63%, 0 100%);
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.42));
+  display: none;
 }
 
 .meter-overlay {
@@ -396,23 +443,23 @@ input {
 }
 
 #ledL3 {
-  left: 43.23%;
-  top: 83.06%;
+  left: 43.40%;
+  top: 83.30%;
 }
 
 #ledL6 {
-  left: 46.62%;
-  top: 83.06%;
+  left: 45.23%;
+  top: 83.33%;
 }
 
 #ledR3 {
-  left: 54.42%;
-  top: 83.06%;
+  left: 54.72%;
+  top: 83.30%;
 }
 
 #ledR6 {
-  left: 57.80%;
-  top: 83.06%;
+  left: 56.60%;
+  top: 83.33%;
 }
 
 .led3.on {
@@ -451,8 +498,7 @@ input {
 }
 
 .hotspot:hover::after,
-.hotspot:focus-visible::after,
-.hotspot.active::after {
+.hotspot:focus-visible::after {
   opacity: 1;
 }
 
@@ -462,40 +508,41 @@ input {
 }
 
 .transport-hotspot.rewind {
-  left: 64.26%;
-  top: 68.30%;
+  left: 68.06%;
+  top: 70.40%;
 }
 
 .transport-hotspot.ff {
-  left: 67.37%;
-  top: 68.30%;
+  left: 71.03%;
+  top: 70.40%;
 }
 
 .transport-hotspot.play {
-  left: 70.62%;
-  top: 68.30%;
+  left: 73.72%;
+  top: 70.40%;
 }
 
 .transport-hotspot.stop {
-  left: 73.93%;
-  top: 68.30%;
+  left: 76.84%;
+  top: 70.40%;
 }
 
 .transport-hotspot.pause {
-  left: 73.93%;
-  top: 65.08%;
+  left: 76.84%;
+  top: 66.65%;
 }
 
 .pause-indicator {
   position: absolute;
-  left: 72.31%;
-  top: 65.65%;
+  left: 75.47%;
+  top: 67.44%;
   width: clamp(4px, 0.46vw, 7px);
   aspect-ratio: 1;
   border-radius: 50%;
   z-index: 5;
   background: rgba(53, 7, 4, 0.56);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.62) inset;
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 

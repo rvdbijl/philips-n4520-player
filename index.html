@@ -13,8 +13,22 @@
           <img class="deck-photo" src="assets/n4520-deck-base-no-transport.png" alt="Philips N4520 reel to reel deck">
           <div class="photo-vignette" aria-hidden="true"></div>
           <canvas class="reel-3d-layer" id="reelCanvas" aria-hidden="true"></canvas>
-          <img class="transport-photo tensioner-photo tensioner-photo-left" id="tensionerLeft" src="assets/tensioner-roller-left.png" alt="">
-          <img class="transport-photo tensioner-photo tensioner-photo-right" id="tensionerRight" src="assets/tensioner-roller-left.png" alt="">
+          <div class="transport-photo tensioner-photo tensioner-photo-left" id="tensionerLeft" aria-hidden="true">
+            <img class="tensioner-body" src="assets/tensioner-left-new.png" alt="">
+            <img class="tensioner-face" src="assets/tensioner-left-new.png" alt="">
+          </div>
+          <div class="transport-photo tensioner-photo tensioner-photo-right" id="tensionerRight" aria-hidden="true">
+            <img class="tensioner-body" src="assets/tensioner-left-new.png" alt="">
+            <img class="tensioner-face" src="assets/tensioner-left-new.png" alt="">
+          </div>
+          <div class="transport-photo guide-roller-photo guide-roller-photo-left" aria-hidden="true">
+            <img class="guide-roller-body" src="assets/guide-roller-left-small.png" alt="">
+            <img class="guide-roller-face" src="assets/guide-roller-left-small.png" alt="">
+          </div>
+          <div class="transport-photo guide-roller-photo guide-roller-photo-right" aria-hidden="true">
+            <img class="guide-roller-body" src="assets/guide-roller-left-small.png" alt="">
+            <img class="guide-roller-face" src="assets/guide-roller-left-small.png" alt="">
+          </div>
           <div class="transport-photo pinch-roller-photo" id="pinchRollerPhoto" aria-hidden="true">
             <img class="pinch-roller-body" src="assets/pinch-roller.png" alt="">
             <img class="pinch-roller-face" src="assets/pinch-roller.png" alt="">
@@ -51,8 +65,8 @@
           </div>
 
           <svg class="photo-tape-path" viewBox="0 0 1600 1200" preserveAspectRatio="none" aria-hidden="true">
-            <path class="tape-shadow" id="tapeShadow" d="M 501 612 C 464 650 438 704 410 760 C 463 743 520 721 588 699 C 666 673 737 675 804 688 C 892 706 970 685 1048 714 C 1104 735 1162 752 1192 708 C 1166 663 1134 632 1096 611"></path>
-            <path class="tape-line" id="movingTape" d="M 501 612 C 464 650 438 704 410 760 C 463 743 520 721 588 699 C 666 673 737 675 804 688 C 892 706 970 685 1048 714 C 1104 735 1162 752 1192 708 C 1166 663 1134 632 1096 611"></path>
+            <path class="tape-shadow" id="tapeShadow"></path>
+            <path class="tape-line" id="movingTape"></path>
           </svg>
 
           <div class="roller-rest-cover" aria-hidden="true"></div>
@@ -94,9 +108,9 @@
             </label>
             <div class="track-readout" id="trackName">No file loaded</div>
             <div class="speed-panel" aria-label="tape speed">
-              <button class="speed active" data-speed="15">15</button>
+              <button class="speed" data-speed="15">15</button>
               <button class="speed" data-speed="7.5">7 1/2</button>
-              <button class="speed" data-speed="3.75">3 3/4</button>
+              <button class="speed active" data-speed="3.75">3 3/4</button>
             </div>
             <button class="utility" id="zeroButton">zero</button>
           </div>

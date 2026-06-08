@@ -7,6 +7,8 @@ const deck = document.getElementById("deck");
 const reelCanvas = document.getElementById("reelCanvas");
 const leftReel = document.getElementById("leftReel");
 const rightReel = document.getElementById("rightReel");
+const guideRollerLeft = document.querySelector(".guide-roller-photo-left");
+const guideRollerRight = document.querySelector(".guide-roller-photo-right");
 const leftPack = document.getElementById("leftPack");
 const rightPack = document.getElementById("rightPack");
 const capstan = document.getElementById("capstan");
@@ -49,10 +51,15 @@ let dataL;
 let dataR;
 let selectedUrl;
 let mode = "stop";
-let speedIps = 15;
+let speedIps = 3.75;
 let reelAngleL = 0;
 let reelAngleR = 0;
 let capstanAngle = 0;
+let pinchRollerAngle = 0;
+let guideRollerAngleL = 0;
+let guideRollerAngleR = 0;
+let tensionerAngleL = 0;
+let tensionerAngleR = 0;
 let tapeOffset = 0;
 let lastFrame = performance.now();
 let zeroOffset = 0;
@@ -65,24 +72,34 @@ const hubDiameterIn = 3.0;
 const emptyTapeDiameterIn = hubDiameterIn * 1.2;
 const fullTapeDiameterIn = 9.35;
 const windingSpeedIps = 90;
+const minPlaySpeedIps = 3.75;
+const maxPlaySpeedIps = 15;
 const pinchRollerDiameterIn = 1.15;
+const guideRollerDiameterIn = 1.35;
+const tensionerRollerDiameterIn = 0.95;
 const meterMinDb = -20;
 const meterMaxDb = 6;
 const meterRedStartAngle = 16.4;
 const windSecondsPerSecond = 12;
 const referenceWidth = 1600;
 const referenceHeight = 1200;
-const reelTextureSize = 560;
+const reelTextureSize = 588;
 const leftReelCenter = { x: 511, y: 349 };
 const rightReelCenter = { x: 1081, y: 351 };
 const rollerRestCenter = { x: 914, y: 821 };
 const rollerPlayCenter = { x: 914, y: 796 };
-const leftTensionerRest = { x: 398, y: 752 };
-const leftTensionerRun = { x: 391, y: 718 };
-const leftTensionerKick = { x: 386, y: 688 };
-const rightTensionerRest = { x: 1202, y: 752 };
-const rightTensionerRun = { x: 1209, y: 718 };
-const rightTensionerKick = { x: 1214, y: 688 };
+const leftGuideRollerCenter = { x: 506, y: 736 };
+const rightGuideRollerCenter = { x: 1094, y: 736 };
+const leftTensionerRest = { x: 402, y: 763 };
+const leftTensionerRun = { x: 393, y: 722 };
+const leftTensionerKick = { x: 395, y: 695 };
+const rightTensionerRest = { x: 1199, y: 763 };
+const rightTensionerRun = { x: 1207, y: 722 };
+const rightTensionerKick = { x: 1204, y: 695 };
+const guideRollerRadiusPx = 45;
+const tensionerRollerRadiusPx = 22;
+const leftHeadCoverEntry = { x: 596, y: 741 };
+const rightHeadCoverExit = { x: 1000, y: 728 };
 const vuScale = [
   { db: -20, angle: -32.0 },
   { db: -10, angle: -23.5 },
@@ -117,16 +134,54 @@ const pinchRollerState = {
   lift: 0,
   velocity: 0,
 };
+const pinchClipFull = {
+  left: 62,
+  right: 24,
+};
+const pinchContactLift = 0.98;
 
 const tensionerState = {
-  lift: 0,
-  velocity: 0,
+  left: {
+    lift: 0,
+    velocity: 0,
+    wobble: 0,
+  },
+  right: {
+    lift: 0,
+    velocity: 0,
+    wobble: 0,
+  },
   wasMoving: false,
-  wobble: 0,
+  phase: 0,
 };
+const leftTapeCouplingStart = 0.72;
+const leftTapeCouplingEnd = 0.98;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function smoothstep(edge0, edge1, value) {
+  const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function speedResponse() {
+  const amount = smoothstep(0, 1, (speedIps - minPlaySpeedIps) / (maxPlaySpeedIps - minPlaySpeedIps));
+  return {
+    amount,
+    pinchStiffness: 48 + amount * 18,
+    pinchDamping: 11 + amount * 2,
+    tensionStiffness: 52 + amount * 22,
+    tensionDamping: 9.0 + amount * 1.4,
+    rightStartVelocity: 6.0 + amount * 7.0,
+    leftStartVelocity: 0.7 + amount * 1.4,
+    rightTarget: 0.82 + amount * 0.18,
+    leftPreload: 0.10 + amount * 0.08,
+    leftTarget: 0.86 + amount * 0.14,
+    liftMod: 0.006 + amount * 0.008,
+    wobbleMod: 0.18 + amount * 0.30,
+  };
 }
 
 function stageY(y) {
@@ -653,33 +708,63 @@ function stepSpring(state, target, dt, stiffness, damping) {
 
 function updateTransportPhotos(dt) {
   const pinchEngaged = mode === "play" && !audio.paused;
-  stepSpring(pinchRollerState, pinchEngaged ? 1 : 0, dt, 58, 12);
+  const response = speedResponse();
+  stepSpring(pinchRollerState, pinchEngaged ? 1 : 0, dt, response.pinchStiffness, response.pinchDamping);
   const pinchPoint = mixPoint(rollerRestCenter, rollerPlayCenter, clamp(pinchRollerState.lift, 0, 1));
   setStagePosition(pinchRollerPhoto, pinchPoint);
   if (pinchRollerPhoto) {
-    pinchRollerPhoto.style.setProperty("--pinch-rot", `${capstanAngle}deg`);
+    const clipAmount = clamp(pinchRollerState.lift, 0, 1);
+    const rollerInContact = pinchEngaged && pinchRollerState.lift >= pinchContactLift;
+    if (rollerInContact) {
+      pinchRollerAngle += angularDegreesPerSecond(speedIps, pinchRollerDiameterIn) * dt;
+    }
+    pinchRollerPhoto.style.setProperty("--pinch-clip-left", `${(pinchClipFull.left * clipAmount).toFixed(2)}%`);
+    pinchRollerPhoto.style.setProperty("--pinch-clip-right", `${(pinchClipFull.right * clipAmount).toFixed(2)}%`);
+    pinchRollerPhoto.style.setProperty("--pinch-rot", `${pinchRollerAngle}deg`);
   }
 
-  const tapeMoving = Math.abs(transportTapeIps()) > 0;
+  const tapeIps = transportTapeIps();
+  const tapeMoving = Math.abs(tapeIps) > 0;
+  const playing = mode === "play" && !audio.paused;
   if (tapeMoving && !tensionerState.wasMoving) {
-    tensionerState.velocity = 8.5 + Math.random() * 4.5;
-    tensionerState.wobble = Math.random() * 2 - 1;
+    tensionerState.right.velocity = response.rightStartVelocity + Math.random() * (2.0 + response.amount * 2.5);
+    tensionerState.left.velocity = playing
+      ? response.leftStartVelocity + Math.random() * 0.6
+      : response.rightStartVelocity + Math.random() * (2.0 + response.amount * 2.5);
+    tensionerState.right.wobble = Math.random() * 1.2 - 0.6;
+    tensionerState.left.wobble = Math.random() * 1.2 - 0.6;
   }
   tensionerState.wasMoving = tapeMoving;
-  stepSpring(tensionerState, tapeMoving ? 1 : 0, dt, 68, 9.5);
+
+  const leftCoupling = playing ? smoothstep(leftTapeCouplingStart, leftTapeCouplingEnd, pinchRollerState.lift) : 1;
+  const rightTarget = tapeMoving ? (playing ? response.rightTarget : 1) : 0;
+  const leftPlayTarget = response.leftPreload + (response.leftTarget - response.leftPreload) * leftCoupling;
+  const leftTarget = tapeMoving ? (playing ? leftPlayTarget : 1) : 0;
+  stepSpring(tensionerState.right, rightTarget, dt, response.tensionStiffness, response.tensionDamping);
+  stepSpring(tensionerState.left, leftTarget, dt, response.tensionStiffness, response.tensionDamping);
+
+  if (playing) {
+    tensionerState.phase += dt;
+  }
+  const leftModScale = playing ? clamp((tensionerState.left.lift - 0.55) / 0.45, 0, 1) : 0;
+  const rightModScale = playing ? clamp((tensionerState.right.lift - 0.55) / 0.45, 0, 1) : 0;
+  const leftLift = tensionerState.left.lift + Math.sin(tensionerState.phase * 4.1 + 1.2) * response.liftMod * leftModScale;
+  const rightLift = tensionerState.right.lift + Math.sin(tensionerState.phase * 4.7) * response.liftMod * rightModScale;
+  const leftWobble = tensionerState.left.wobble + Math.sin(tensionerState.phase * 5.3 + 0.7) * response.wobbleMod * leftModScale;
+  const rightWobble = tensionerState.right.wobble + Math.sin(tensionerState.phase * 4.9 + 2.1) * response.wobbleMod * rightModScale;
   const leftPoint = tensionerPoint(
     leftTensionerRest,
     leftTensionerRun,
     leftTensionerKick,
-    tensionerState.lift,
-    tensionerState.wobble,
+    leftLift,
+    leftWobble,
   );
   const rightPoint = tensionerPoint(
     rightTensionerRest,
     rightTensionerRun,
     rightTensionerKick,
-    tensionerState.lift,
-    -tensionerState.wobble,
+    rightLift,
+    -rightWobble,
   );
   setStagePosition(tensionerLeft, leftPoint);
   setStagePosition(tensionerRight, rightPoint);
@@ -712,38 +797,145 @@ function pointOnPack(center, radius, degrees) {
   };
 }
 
+function externalTangent(a, b, side) {
+  const dx = b.center.x - a.center.x;
+  const dy = b.center.y - a.center.y;
+  const distanceSq = dx * dx + dy * dy;
+  const radiusDelta = a.radius - b.radius;
+  const tangentSq = distanceSq - radiusDelta * radiusDelta;
+  if (distanceSq <= 0 || tangentSq <= 0) return null;
+
+  const tangent = Math.sqrt(tangentSq);
+  const vx = (dx * radiusDelta - dy * tangent * side) / distanceSq;
+  const vy = (dy * radiusDelta + dx * tangent * side) / distanceSq;
+  return {
+    from: {
+      x: a.center.x + vx * a.radius,
+      y: a.center.y + vy * a.radius,
+    },
+    to: {
+      x: b.center.x + vx * b.radius,
+      y: b.center.y + vy * b.radius,
+    },
+  };
+}
+
+function arcSegment(circle, from, to) {
+  const startAngle = Math.atan2(from.y - circle.center.y, from.x - circle.center.x);
+  const endAngle = Math.atan2(to.y - circle.center.y, to.x - circle.center.x);
+  const clockwiseDelta = (endAngle - startAngle + Math.PI * 2) % (Math.PI * 2);
+  const sweep = clockwiseDelta <= Math.PI ? 1 : 0;
+  return `A ${circle.radius.toFixed(1)} ${circle.radius.toFixed(1)} 0 0 ${sweep} ${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
+}
+
+function arcSegmentWithSweep(circle, from, to, sweep) {
+  return `A ${circle.radius.toFixed(1)} ${circle.radius.toFixed(1)} 0 0 ${sweep} ${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
+}
+
+function tapePathFromCircles(circles, sides, hiddenSpanIndex = -1, overrides = {}) {
+  const tangents = [];
+  for (let index = 0; index < circles.length - 1; index += 1) {
+    const tangent = overrides[index] || externalTangent(circles[index], circles[index + 1], sides[index]);
+    if (!tangent) return "";
+    tangents.push(tangent);
+  }
+
+  const commands = [`M ${tangents[0].from.x.toFixed(1)} ${tangents[0].from.y.toFixed(1)}`];
+  tangents.forEach((tangent, index) => {
+    if (index === hiddenSpanIndex) {
+      const resume = tangents[index + 1]?.from;
+      if (resume) {
+        commands.push(`M ${resume.x.toFixed(1)} ${resume.y.toFixed(1)}`);
+      }
+      return;
+    }
+    commands.push(`L ${tangent.to.x.toFixed(1)} ${tangent.to.y.toFixed(1)}`);
+    const nextTangent = tangents[index + 1];
+    if (nextTangent) {
+      commands.push(arcSegment(circles[index + 1], tangent.to, nextTangent.from));
+    }
+  });
+  return commands.join(" ");
+}
+
+function leftTensionerToGuideTangent(leftTensioner) {
+  const tensionerCenter = { x: leftTensioner.x - 1.3, y: leftTensioner.y + 5.1 };
+  return {
+    from: {
+      x: tensionerCenter.x - 8,
+      y: tensionerCenter.y + tensionerRollerRadiusPx,
+    },
+    to: {
+      x: leftGuideRollerCenter.x,
+      y: leftGuideRollerCenter.y - guideRollerRadiusPx - 5,
+    },
+  };
+}
+
 function updateTapePath(progress) {
   const leftRadius = packRadiusPx(tapePackDiameter(progress, "left"));
   const rightRadius = packRadiusPx(tapePackDiameter(progress, "right"));
-  const leftExit = pointOnPack(leftReelCenter, leftRadius, 126);
-  const rightEntry = pointOnPack(rightReelCenter, rightRadius, 54);
+  const playing = mode === "play" && !audio.paused;
+  const response = speedResponse();
+  const leftModScale = playing ? clamp((tensionerState.left.lift - 0.55) / 0.45, 0, 1) : 0;
+  const rightModScale = playing ? clamp((tensionerState.right.lift - 0.55) / 0.45, 0, 1) : 0;
+  const leftLift = tensionerState.left.lift + Math.sin(tensionerState.phase * 4.1 + 1.2) * response.liftMod * leftModScale;
+  const rightLift = tensionerState.right.lift + Math.sin(tensionerState.phase * 4.7) * response.liftMod * rightModScale;
+  const leftWobble = tensionerState.left.wobble + Math.sin(tensionerState.phase * 5.3 + 0.7) * response.wobbleMod * leftModScale;
+  const rightWobble = tensionerState.right.wobble + Math.sin(tensionerState.phase * 4.9 + 2.1) * response.wobbleMod * rightModScale;
   const leftTensioner = tensionerPoint(
     leftTensionerRest,
     leftTensionerRun,
     leftTensionerKick,
-    tensionerState.lift,
-    tensionerState.wobble,
+    leftLift,
+    leftWobble,
   );
   const rightTensioner = tensionerPoint(
     rightTensionerRest,
     rightTensionerRun,
     rightTensionerKick,
-    tensionerState.lift,
-    -tensionerState.wobble,
+    rightLift,
+    -rightWobble,
   );
+  const circles = [
+    { center: leftReelCenter, radius: leftRadius },
+    { center: { x: leftTensioner.x - 1.3, y: leftTensioner.y + 5.1 }, radius: tensionerRollerRadiusPx },
+    { center: leftGuideRollerCenter, radius: guideRollerRadiusPx },
+    { center: rightGuideRollerCenter, radius: guideRollerRadiusPx },
+    { center: { x: rightTensioner.x + 1.3, y: rightTensioner.y + 5.1 }, radius: tensionerRollerRadiusPx },
+    { center: rightReelCenter, radius: rightRadius },
+  ];
+  const reelToLeftTensioner = externalTangent(circles[0], circles[1], 1);
+  const leftTensionerToGuide = leftTensionerToGuideTangent(leftTensioner);
+  const leftGuideTapeCircle = {
+    center: { x: leftGuideRollerCenter.x, y: leftGuideRollerCenter.y - 5 },
+    radius: guideRollerRadiusPx,
+  };
+  const leftGuideToCover = pointOnPack(leftGuideTapeCircle.center, leftGuideTapeCircle.radius, -25);
+  const rightGuideFromCover = pointOnPack(rightGuideRollerCenter, guideRollerRadiusPx, -120);
+  const rightGuideToTensionerBase = pointOnPack(rightGuideRollerCenter, guideRollerRadiusPx, 42);
+  const rightGuideToTensioner = {
+    ...rightGuideToTensionerBase,
+    y: rightGuideToTensionerBase.y - 45,
+  };
+  const rightTensionerBottom = pointOnPack(circles[4].center, tensionerRollerRadiusPx, 90);
+  const rightTensionerToReel = externalTangent(circles[4], circles[5], 1);
+  if (!reelToLeftTensioner || !rightTensionerToReel) return;
 
   const d = [
-    `M ${leftExit.x.toFixed(1)} ${leftExit.y.toFixed(1)}`,
-    `C ${(leftExit.x - 25).toFixed(1)} ${(leftExit.y + 70).toFixed(1)} ${(leftTensioner.x - 60).toFixed(1)} ${(leftTensioner.y - 72).toFixed(1)} ${(leftTensioner.x - 34).toFixed(1)} ${(leftTensioner.y - 18).toFixed(1)}`,
-    `C ${(leftTensioner.x - 50).toFixed(1)} ${(leftTensioner.y + 24).toFixed(1)} ${(leftTensioner.x - 3).toFixed(1)} ${(leftTensioner.y + 45).toFixed(1)} ${(leftTensioner.x + 38).toFixed(1)} ${(leftTensioner.y + 18).toFixed(1)}`,
-    `C ${(leftTensioner.x + 62).toFixed(1)} ${(leftTensioner.y + 1).toFixed(1)} 417.0 718.0 424.0 697.0`,
-    "M 465.0 780.0",
-    "C 574.0 786.0 731.0 789.0 884.0 780.0",
-    "M 918.0 780.0",
-    "C 935.0 750.0 945.0 724.0 956.0 703.0",
-    `C 1012.0 717.0 ${(rightTensioner.x - 74).toFixed(1)} ${(rightTensioner.y + 29).toFixed(1)} ${(rightTensioner.x - 38).toFixed(1)} ${(rightTensioner.y + 18).toFixed(1)}`,
-    `C ${(rightTensioner.x + 3).toFixed(1)} ${(rightTensioner.y + 45).toFixed(1)} ${(rightTensioner.x + 50).toFixed(1)} ${(rightTensioner.y + 24).toFixed(1)} ${(rightTensioner.x + 34).toFixed(1)} ${(rightTensioner.y - 18).toFixed(1)}`,
-    `C ${(rightTensioner.x + 60).toFixed(1)} ${(rightTensioner.y - 72).toFixed(1)} ${(rightEntry.x + 24).toFixed(1)} ${(rightEntry.y + 70).toFixed(1)} ${rightEntry.x.toFixed(1)} ${rightEntry.y.toFixed(1)}`,
+    `M ${reelToLeftTensioner.from.x.toFixed(1)} ${reelToLeftTensioner.from.y.toFixed(1)}`,
+    `L ${reelToLeftTensioner.to.x.toFixed(1)} ${reelToLeftTensioner.to.y.toFixed(1)}`,
+    `M ${leftTensionerToGuide.from.x.toFixed(1)} ${leftTensionerToGuide.from.y.toFixed(1)}`,
+    `L ${leftTensionerToGuide.to.x.toFixed(1)} ${leftTensionerToGuide.to.y.toFixed(1)}`,
+    arcSegmentWithSweep(leftGuideTapeCircle, leftTensionerToGuide.to, leftGuideToCover, 1),
+    `M ${leftHeadCoverEntry.x.toFixed(1)} ${leftHeadCoverEntry.y.toFixed(1)}`,
+    `L ${leftGuideToCover.x.toFixed(1)} ${leftGuideToCover.y.toFixed(1)}`,
+    `M ${rightHeadCoverExit.x.toFixed(1)} ${rightHeadCoverExit.y.toFixed(1)}`,
+    `L ${rightGuideFromCover.x.toFixed(1)} ${rightGuideFromCover.y.toFixed(1)}`,
+    arcSegmentWithSweep(circles[3], rightGuideFromCover, rightGuideToTensioner, 0),
+    `L ${rightTensionerBottom.x.toFixed(1)} ${rightTensionerBottom.y.toFixed(1)}`,
+    arcSegment(circles[4], rightTensionerBottom, rightTensionerToReel.from),
+    `L ${rightTensionerToReel.to.x.toFixed(1)} ${rightTensionerToReel.to.y.toFixed(1)}`,
   ].join(" ");
 
   movingTape.setAttribute("d", d);
@@ -791,19 +983,32 @@ function updateMotion(dt) {
   const linearIps = Math.abs(tapeIps);
   const leftDiameter = tapePackDiameter(progress, "left");
   const rightDiameter = tapePackDiameter(progress, "right");
-  const leftDps = angularDegreesPerSecond(linearIps, leftDiameter);
+  const leftReelCoupling = mode === "play"
+    ? smoothstep(leftTapeCouplingStart, leftTapeCouplingEnd, pinchRollerState.lift)
+    : 1;
+  const leftDps = angularDegreesPerSecond(linearIps * leftReelCoupling, leftDiameter);
   const rightDps = angularDegreesPerSecond(linearIps, rightDiameter);
   const rollerIps = mode === "play" && !audio.paused ? speedIps : 0;
   const capstanDps = angularDegreesPerSecond(rollerIps, pinchRollerDiameterIn);
+  const guideRollerDps = angularDegreesPerSecond(linearIps, guideRollerDiameterIn);
+  const tensionerDps = angularDegreesPerSecond(linearIps, tensionerRollerDiameterIn);
 
   reelAngleL -= direction * leftDps * dt;
   reelAngleR -= direction * rightDps * dt;
   capstanAngle += capstanDps * dt;
+  guideRollerAngleL += direction * guideRollerDps * dt;
+  guideRollerAngleR -= direction * guideRollerDps * dt;
+  tensionerAngleL -= direction * tensionerDps * dt;
+  tensionerAngleR += direction * tensionerDps * dt;
   tapeOffset -= direction * linearIps * dt * 10;
 
   leftReel.style.setProperty("--rot", `${reelAngleL}deg`);
   rightReel.style.setProperty("--rot", `${reelAngleR}deg`);
   capstan.style.setProperty("--capstan-rot", `${capstanAngle}deg`);
+  guideRollerLeft?.style.setProperty("--guide-rot", `${guideRollerAngleL}deg`);
+  guideRollerRight?.style.setProperty("--guide-rot", `${guideRollerAngleR}deg`);
+  tensionerLeft.style.setProperty("--tensioner-rot", `${tensionerAngleL}deg`);
+  tensionerRight.style.setProperty("--tensioner-rot", `${tensionerAngleR}deg`);
   movingTape.style.setProperty("--tape-offset", `${tapeOffset}`);
   updateTransportPhotos(dt);
   updateTapePacks(progress);
@@ -912,5 +1117,6 @@ audio.addEventListener("loadedmetadata", () => {
 setMode("stop");
 renderCounter(0);
 updateTransportPhotos(0);
+updateTapePacks(tapeProgress());
 initReel3d();
 requestAnimationFrame(tick);
