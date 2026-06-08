@@ -2,7 +2,9 @@
 
 A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API.
 
-The current visual approach is a photo-backed compositing prototype: the N4520 face is anchored by a supplied base photo with the reels removed and the powered-on VU meters already blended into the correct perspective. The displayed base image is `assets/n4520-deck-base-no-reels-powered-vu.png`. The reels and pinch/capstan roller are rendered in a transparent Three.js layer so their rotation, lift, rim highlights, and shadows are handled as shallow 3D scene objects instead of flat DOM images. For a public/distributable version, replace the reference photos with owned/licensed straight-on captures or rendered texture passes from a 3D model.
+![Philips N4520 player visualizer sample](assets/readme-sample.png)
+
+The current visual approach is a photo-backed compositing prototype: the N4520 face is anchored by a supplied base photo with the reels removed and the powered-on VU meters already blended into the correct perspective. The displayed base image is `assets/n4520-deck-base-no-reels-powered-vu.png`. The reels are compositor-backed DOM image layers for smoother rotation, while the tape path, transport rollers, VU needles, and controls are overlaid in HTML/CSS/SVG. For a public/distributable version, replace the reference photos with owned/licensed straight-on captures or rendered texture passes from a 3D model.
 
 - supply and take-up reel rotation over the real deck geometry
 - tape pack transfer from left reel to right reel
