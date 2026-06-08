@@ -1,6 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-test("renders the N4520 visualizer without a blank WebGL layer", async ({ page }) => {
+test("renders the N4520 visualizer with compositor reel layers", async ({ page }) => {
   const browserErrors = [];
   page.on("pageerror", (error) => browserErrors.push(error.message));
   page.on("console", (message) => {
@@ -9,24 +9,26 @@ test("renders the N4520 visualizer without a blank WebGL layer", async ({ page }
 
   await page.goto("http://localhost:4173/", { waitUntil: "networkidle" });
 
-  const canvas = page.locator("#reelCanvas");
-  await expect(canvas).toBeVisible();
+  await expect(page.locator("#reelCanvas")).toBeHidden();
+  await expect(page.locator(".reel-mount-left")).toBeVisible();
+  await expect(page.locator(".reel-mount-right")).toBeVisible();
   await expect(page.locator(".vu-window-left")).toBeVisible();
   await expect(page.locator(".vu-window-right")).toBeVisible();
 
-  const canvasState = await canvas.evaluate((node) => {
-    const dataUrl = node.toDataURL("image/png");
+  const reelState = await page.locator(".reel-mount-left").evaluate((node) => {
+    const { width, height, display, backgroundImage } = getComputedStyle(node.querySelector(".photo-reel"), "::before");
     return {
-      width: node.width,
-      height: node.height,
-      bytes: dataUrl.length,
-      blank: dataUrl.length < 5000,
+      width,
+      height,
+      display,
+      hasImage: backgroundImage.includes("reel-front-face.png"),
     };
   });
 
-  expect(canvasState.width).toBeGreaterThan(0);
-  expect(canvasState.height).toBeGreaterThan(0);
-  expect(canvasState.blank).toBe(false);
+  expect(Number.parseFloat(reelState.width)).toBeGreaterThan(0);
+  expect(Number.parseFloat(reelState.height)).toBeGreaterThan(0);
+  expect(reelState.display).not.toBe("none");
+  expect(reelState.hasImage).toBe(true);
   expect(browserErrors).toEqual([]);
 
   await page.screenshot({ path: "test-results/n4520-render.png", fullPage: true });

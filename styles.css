@@ -78,6 +78,7 @@ input {
   height: 100%;
   pointer-events: none;
   z-index: 4;
+  display: none;
 }
 
 .transport-photo {
@@ -91,6 +92,8 @@ input {
   --pinch-rot: 0deg;
   --pinch-clip-left: 0%;
   --pinch-clip-right: 0%;
+  left: 0;
+  top: 0;
   width: 5.35%;
   aspect-ratio: 1;
   z-index: 5;
@@ -117,6 +120,8 @@ input {
 
 .tensioner-photo {
   --tensioner-rot: 0deg;
+  left: 0;
+  top: 0;
   width: 5.3%;
   aspect-ratio: 1;
   z-index: 5;
@@ -185,22 +190,23 @@ input {
 
 .reel-mount {
   position: absolute;
-  width: 37.2%;
+  width: 36.75%;
   aspect-ratio: 1;
   border-radius: 50%;
-  filter: drop-shadow(0 13px 18px rgba(0, 0, 0, 0.32));
-  display: none;
+  filter: none;
+  display: block;
+  z-index: 4;
 }
 
 .reel-mount-left {
-  left: 30.8%;
-  top: 28.8%;
+  left: 31.94%;
+  top: 29.08%;
   transform: translate(-50%, -50%);
 }
 
 .reel-mount-right {
-  left: 68.6%;
-  top: 28.8%;
+  left: 67.56%;
+  top: 29.25%;
   transform: translate(-50%, -50%);
 }
 
@@ -211,8 +217,10 @@ input {
   border-radius: 50%;
   overflow: hidden;
   transform: rotate(var(--rot));
+  transform-origin: 50% 50%;
+  will-change: transform;
   background: transparent;
-  box-shadow: 0 13px 18px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 .photo-reel::before {
@@ -226,11 +234,11 @@ input {
 }
 
 .reel-mount-left .photo-reel::before {
-  background-image: none;
+  background-image: url("assets/reel-front-face.png");
 }
 
 .reel-mount-right .photo-reel::before {
-  background-image: none;
+  background-image: url("assets/reel-front-face.png");
 }
 
 .photo-pack {
@@ -278,7 +286,7 @@ input {
 }
 
 .vu-window-left {
-  --pivot-x: 59%;
+  --pivot-x: 51.6%;
   left: 39.92%;
   top: 75.14%;
   width: 8.43%;
@@ -286,7 +294,7 @@ input {
 }
 
 .vu-window-right {
-  --pivot-x: 59%;
+  --pivot-x: 51.6%;
   left: 51.04%;
   top: 75.14%;
   width: 8.49%;
@@ -336,7 +344,6 @@ input {
 }
 
 .tape-line {
-  --tape-offset: 0;
   stroke: #3b2114;
   stroke-width: 3.2;
   filter: drop-shadow(0 1px 1px rgba(27, 12, 6, 0.36));

@@ -60,12 +60,30 @@ let guideRollerAngleL = 0;
 let guideRollerAngleR = 0;
 let tensionerAngleL = 0;
 let tensionerAngleR = 0;
-let tapeOffset = 0;
 let lastFrame = performance.now();
+let visualDt = 1 / 60;
 let zeroOffset = 0;
 let levelL = -60;
 let levelR = -60;
 let windWasPlaying = false;
+let animationFrameId = null;
+let lastCounterText = "";
+let lastTapePath = "";
+let lastLeftPackSize = "";
+let lastRightPackSize = "";
+let lastLeftPackDiameter = NaN;
+let lastRightPackDiameter = NaN;
+let lastReel3dRenderKey = "";
+let lastTapeGeometryUpdate = 0;
+let stageWidth = 0;
+let stageHeight = 0;
+let lastLeftReelDps = 0;
+let lastRightReelDps = 0;
+const styleValueCache = new WeakMap();
+const reelAnimations = {
+  left: { animation: null, sign: 0, duration: 0, baseAngle: 0 },
+  right: { animation: null, sign: 0, duration: 0, baseAngle: 0 },
+};
 
 const reelDiameterIn = 10.5;
 const hubDiameterIn = 3.0;
@@ -81,6 +99,7 @@ const meterMinDb = -20;
 const meterMaxDb = 6;
 const meterRedStartAngle = 16.4;
 const windSecondsPerSecond = 12;
+const tapeGeometryIntervalMs = 50;
 const referenceWidth = 1600;
 const referenceHeight = 1200;
 const reelTextureSize = 588;
@@ -164,6 +183,18 @@ function clamp(value, min, max) {
 function smoothstep(edge0, edge1, value) {
   const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
+}
+
+function setStyleProperty(element, property, value) {
+  if (!element) return;
+  let elementCache = styleValueCache.get(element);
+  if (!elementCache) {
+    elementCache = new Map();
+    styleValueCache.set(element, elementCache);
+  }
+  if (elementCache.get(property) === value) return;
+  element.style.setProperty(property, value);
+  elementCache.set(property, value);
 }
 
 function speedResponse() {
@@ -444,20 +475,29 @@ function createRoller() {
 }
 
 function resizeReelRenderer() {
+  updateStageSize();
   if (!reel3d.renderer) return;
   const { clientWidth, clientHeight } = reelCanvas;
   reel3d.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   reel3d.renderer.setSize(clientWidth, clientHeight, false);
+  lastReel3dRenderKey = "";
+  renderReel3d();
+}
+
+function updateStageSize() {
+  stageWidth = deck.clientWidth || referenceWidth;
+  stageHeight = deck.clientHeight || referenceHeight;
 }
 
 function initReel3d() {
   if (!reelCanvas) return;
+  updateStageSize();
 
   reel3d.renderer = new THREE.WebGLRenderer({
     canvas: reelCanvas,
     alpha: true,
     antialias: true,
-    preserveDrawingBuffer: true,
+    preserveDrawingBuffer: false,
   });
   reel3d.renderer.setClearColor(0x000000, 0);
   reel3d.scene = new THREE.Scene();
@@ -499,9 +539,63 @@ function initReel3d() {
 }
 
 function setPackRadius(mesh, diameterIn) {
-  if (!mesh) return;
+  if (!mesh) return false;
   const radius = (diameterIn / reelDiameterIn) * (reelTextureSize / 2);
   mesh.scale.set(radius, radius, 1);
+  return true;
+}
+
+function initCssReelAnimations() {
+  setStyleProperty(leftReel, "--rot", `${reelAngleL.toFixed(3)}deg`);
+  setStyleProperty(rightReel, "--rot", `${reelAngleR.toFixed(3)}deg`);
+}
+
+function currentReelAnimationAngle(state, fallbackAngle) {
+  if (!state.animation || !Number.isFinite(state.duration) || state.duration <= 0) {
+    return fallbackAngle;
+  }
+  const currentTime = Number(state.animation.currentTime);
+  if (!Number.isFinite(currentTime)) return fallbackAngle;
+  const progress = ((currentTime % state.duration) + state.duration) % state.duration / state.duration;
+  return state.baseAngle + state.sign * progress * 360;
+}
+
+function setReelAnimationSpeed(side, element, desiredDps, angle) {
+  if (!element?.animate) return false;
+  const state = reelAnimations[side];
+  if (Math.abs(desiredDps) < 0.001) {
+    state.animation?.pause();
+    return true;
+  }
+
+  const sign = Math.sign(desiredDps);
+  const duration = Math.max(80, (360 / Math.abs(desiredDps)) * 1000);
+  const shouldRecreate = !state.animation
+    || state.sign !== sign
+    || Math.abs(state.duration - duration) > 50;
+
+  if (shouldRecreate) {
+    const baseAngle = currentReelAnimationAngle(state, angle);
+    state.animation?.cancel();
+    state.animation = element.animate(
+      [
+        { transform: `rotate(${baseAngle.toFixed(3)}deg)` },
+        { transform: `rotate(${(baseAngle + sign * 360).toFixed(3)}deg)` },
+      ],
+      {
+        duration,
+        iterations: Infinity,
+        easing: "linear",
+      },
+    );
+    state.sign = sign;
+    state.duration = duration;
+    state.baseAngle = baseAngle;
+  } else if (state.animation.playState !== "running") {
+    state.animation.play();
+  }
+
+  return true;
 }
 
 function renderReel3d() {
@@ -520,6 +614,12 @@ function renderReel3d() {
     reel3d.roller.position.y += (stageY(target.y) - reel3d.roller.position.y) * 0.28;
     reel3d.rollerWheel.rotation.z = rollerRad;
   }
+  const rollerKey = reel3d.roller
+    ? `${reel3d.roller.position.x.toFixed(2)},${reel3d.roller.position.y.toFixed(2)},${rollerRad.toFixed(4)}`
+    : "";
+  const renderKey = `${leftRad.toFixed(4)}|${rightRad.toFixed(4)}|${rollerKey}`;
+  if (renderKey === lastReel3dRenderKey) return;
+  lastReel3dRenderKey = renderKey;
   reel3d.renderer.render(reel3d.scene, reel3d.camera);
 }
 
@@ -544,6 +644,8 @@ function renderCounter(seconds) {
   const minutes = Math.floor(safe / 60);
   const secs = Math.floor(safe % 60);
   const text = `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  if (text === lastCounterText) return;
+  lastCounterText = text;
   const nodes = Array.from(text, (character) => {
     if (character === ":") {
       const colon = document.createElement("span");
@@ -570,6 +672,7 @@ function setMode(nextMode) {
     button.classList.toggle("active", name === nextMode);
   }
   deck.dataset.mode = nextMode;
+  startAnimationLoop();
 }
 
 function ensureAudioGraph() {
@@ -651,8 +754,8 @@ function updateMeters(dt) {
   const angleL = meterAngle(levelL);
   const angleR = meterAngle(levelR);
 
-  needles.left.style.setProperty("--angle", `${angleL}deg`);
-  needles.right.style.setProperty("--angle", `${angleR}deg`);
+  setStyleProperty(needles.left, "--angle", `${angleL}deg`);
+  setStyleProperty(needles.right, "--angle", `${angleR}deg`);
   updateCssNeedleShadow(needles.leftShadow, angleL);
   updateCssNeedleShadow(needles.rightShadow, angleR);
 
@@ -664,15 +767,16 @@ function updateMeters(dt) {
 
 function updateCssNeedleShadow(needleShadow, angleDeg) {
   const radians = angleDeg * (Math.PI / 180);
-  needleShadow.style.setProperty("--angle", `${angleDeg}deg`);
-  needleShadow.style.setProperty("--shadow-x", `${Math.sin(radians) * 1.4}px`);
-  needleShadow.style.setProperty("--shadow-y", `${-3.2 - Math.cos(radians) * 0.5}px`);
+  setStyleProperty(needleShadow, "--angle", `${angleDeg}deg`);
+  setStyleProperty(needleShadow, "--shadow-x", `${Math.sin(radians) * 1.4}px`);
+  setStyleProperty(needleShadow, "--shadow-y", `${-3.2 - Math.cos(radians) * 0.5}px`);
 }
 
 function setStagePosition(element, point) {
   if (!element) return;
-  element.style.left = `${(point.x / referenceWidth) * 100}%`;
-  element.style.top = `${(point.y / referenceHeight) * 100}%`;
+  const x = (point.x / referenceWidth) * stageWidth;
+  const y = (point.y / referenceHeight) * stageHeight;
+  setStyleProperty(element, "translate", `${x.toFixed(2)}px ${y.toFixed(2)}px`);
 }
 
 function mixPoint(a, b, t) {
@@ -718,9 +822,9 @@ function updateTransportPhotos(dt) {
     if (rollerInContact) {
       pinchRollerAngle += angularDegreesPerSecond(speedIps, pinchRollerDiameterIn) * dt;
     }
-    pinchRollerPhoto.style.setProperty("--pinch-clip-left", `${(pinchClipFull.left * clipAmount).toFixed(2)}%`);
-    pinchRollerPhoto.style.setProperty("--pinch-clip-right", `${(pinchClipFull.right * clipAmount).toFixed(2)}%`);
-    pinchRollerPhoto.style.setProperty("--pinch-rot", `${pinchRollerAngle}deg`);
+    setStyleProperty(pinchRollerPhoto, "--pinch-clip-left", `${(pinchClipFull.left * clipAmount).toFixed(2)}%`);
+    setStyleProperty(pinchRollerPhoto, "--pinch-clip-right", `${(pinchClipFull.right * clipAmount).toFixed(2)}%`);
+    setStyleProperty(pinchRollerPhoto, "--pinch-rot", `${pinchRollerAngle.toFixed(3)}deg`);
   }
 
   const tapeIps = transportTapeIps();
@@ -938,19 +1042,37 @@ function updateTapePath(progress) {
     `L ${rightTensionerToReel.to.x.toFixed(1)} ${rightTensionerToReel.to.y.toFixed(1)}`,
   ].join(" ");
 
+  if (d === lastTapePath) return;
   movingTape.setAttribute("d", d);
   tapeShadow.setAttribute("d", d);
+  lastTapePath = d;
 }
 
 function updateTapePacks(progress) {
   const leftDiameter = tapePackDiameter(progress, "left");
   const rightDiameter = tapePackDiameter(progress, "right");
-  const leftPackSize = (leftDiameter / reelDiameterIn) * 100;
-  const rightPackSize = (rightDiameter / reelDiameterIn) * 100;
-  leftPack.style.setProperty("--pack", `${leftPackSize}%`);
-  rightPack.style.setProperty("--pack", `${rightPackSize}%`);
-  setPackRadius(reel3d.leftPack, leftDiameter);
-  setPackRadius(reel3d.rightPack, rightDiameter);
+  const leftPackSize = `${((leftDiameter / reelDiameterIn) * 100).toFixed(3)}%`;
+  const rightPackSize = `${((rightDiameter / reelDiameterIn) * 100).toFixed(3)}%`;
+  if (leftPackSize !== lastLeftPackSize) {
+    setStyleProperty(leftPack, "--pack", leftPackSize);
+    lastLeftPackSize = leftPackSize;
+  }
+  if (rightPackSize !== lastRightPackSize) {
+    setStyleProperty(rightPack, "--pack", rightPackSize);
+    lastRightPackSize = rightPackSize;
+  }
+  if (
+    (!Number.isFinite(lastLeftPackDiameter) || Math.abs(leftDiameter - lastLeftPackDiameter) > 0.001)
+    && setPackRadius(reel3d.leftPack, leftDiameter)
+  ) {
+    lastLeftPackDiameter = leftDiameter;
+  }
+  if (
+    (!Number.isFinite(lastRightPackDiameter) || Math.abs(rightDiameter - lastRightPackDiameter) > 0.001)
+    && setPackRadius(reel3d.rightPack, rightDiameter)
+  ) {
+    lastRightPackDiameter = rightDiameter;
+  }
   updateTapePath(progress);
 }
 
@@ -975,8 +1097,8 @@ function angularDegreesPerSecond(linearIps, diameterIn) {
   return (linearIps / (Math.PI * diameterIn)) * 360;
 }
 
-function updateMotion(dt) {
-  updateWindPosition(dt);
+function updateMotion(visualDelta, realDelta, now) {
+  updateWindPosition(realDelta);
   const progress = tapeProgress();
   const tapeIps = transportTapeIps();
   const direction = Math.sign(tapeIps);
@@ -992,36 +1114,97 @@ function updateMotion(dt) {
   const capstanDps = angularDegreesPerSecond(rollerIps, pinchRollerDiameterIn);
   const guideRollerDps = angularDegreesPerSecond(linearIps, guideRollerDiameterIn);
   const tensionerDps = angularDegreesPerSecond(linearIps, tensionerRollerDiameterIn);
+  const leftReelDpsSigned = -direction * leftDps;
+  const rightReelDpsSigned = -direction * rightDps;
 
-  reelAngleL -= direction * leftDps * dt;
-  reelAngleR -= direction * rightDps * dt;
-  capstanAngle += capstanDps * dt;
-  guideRollerAngleL += direction * guideRollerDps * dt;
-  guideRollerAngleR -= direction * guideRollerDps * dt;
-  tensionerAngleL -= direction * tensionerDps * dt;
-  tensionerAngleR += direction * tensionerDps * dt;
-  tapeOffset -= direction * linearIps * dt * 10;
+  reelAngleL += leftReelDpsSigned * visualDelta;
+  reelAngleR += rightReelDpsSigned * visualDelta;
+  capstanAngle += capstanDps * visualDelta;
+  guideRollerAngleL += direction * guideRollerDps * visualDelta;
+  guideRollerAngleR -= direction * guideRollerDps * visualDelta;
+  tensionerAngleL -= direction * tensionerDps * visualDelta;
+  tensionerAngleR += direction * tensionerDps * visualDelta;
 
-  leftReel.style.setProperty("--rot", `${reelAngleL}deg`);
-  rightReel.style.setProperty("--rot", `${reelAngleR}deg`);
-  capstan.style.setProperty("--capstan-rot", `${capstanAngle}deg`);
-  guideRollerLeft?.style.setProperty("--guide-rot", `${guideRollerAngleL}deg`);
-  guideRollerRight?.style.setProperty("--guide-rot", `${guideRollerAngleR}deg`);
-  tensionerLeft.style.setProperty("--tensioner-rot", `${tensionerAngleL}deg`);
-  tensionerRight.style.setProperty("--tensioner-rot", `${tensionerAngleR}deg`);
-  movingTape.style.setProperty("--tape-offset", `${tapeOffset}`);
-  updateTransportPhotos(dt);
-  updateTapePacks(progress);
+  if (Math.abs(leftReelDpsSigned - lastLeftReelDps) > 0.01) {
+    if (!setReelAnimationSpeed("left", leftReel, leftReelDpsSigned, reelAngleL)) {
+      setStyleProperty(leftReel, "--rot", `${reelAngleL.toFixed(3)}deg`);
+    }
+    lastLeftReelDps = leftReelDpsSigned;
+  }
+  if (Math.abs(rightReelDpsSigned - lastRightReelDps) > 0.01) {
+    if (!setReelAnimationSpeed("right", rightReel, rightReelDpsSigned, reelAngleR)) {
+      setStyleProperty(rightReel, "--rot", `${reelAngleR.toFixed(3)}deg`);
+    }
+    lastRightReelDps = rightReelDpsSigned;
+  }
+  setStyleProperty(capstan, "--capstan-rot", `${capstanAngle.toFixed(3)}deg`);
+  setStyleProperty(guideRollerLeft, "--guide-rot", `${guideRollerAngleL.toFixed(3)}deg`);
+  setStyleProperty(guideRollerRight, "--guide-rot", `${guideRollerAngleR.toFixed(3)}deg`);
+  setStyleProperty(tensionerLeft, "--tensioner-rot", `${tensionerAngleL.toFixed(3)}deg`);
+  setStyleProperty(tensionerRight, "--tensioner-rot", `${tensionerAngleR.toFixed(3)}deg`);
+  updateTransportPhotos(visualDelta);
+  if (shouldUpdateTapeGeometry(now)) {
+    updateTapePacks(progress);
+  }
   renderReel3d();
 }
 
+function smoothVisualDelta(rawDelta) {
+  const target = clamp(rawDelta, 1 / 120, 1 / 30);
+  visualDt += (target - visualDt) * 0.22;
+  return visualDt;
+}
+
+function shouldUpdateTapeGeometry(now) {
+  if (!transportIsActive() && !springIsActive(tensionerState.left) && !springIsActive(tensionerState.right)) {
+    lastTapeGeometryUpdate = now;
+    return true;
+  }
+  if (now - lastTapeGeometryUpdate < tapeGeometryIntervalMs) return false;
+  lastTapeGeometryUpdate = now;
+  return true;
+}
+
+function transportIsActive() {
+  return mode === "rewind" || mode === "ff" || (mode === "play" && !audio.paused);
+}
+
+function springIsActive(state) {
+  return Math.abs(state.lift) > 0.001 || Math.abs(state.velocity) > 0.001;
+}
+
+function metersAreActive() {
+  return (!audio.paused && analyserL && analyserR)
+    || Math.abs(levelL - -60) > 0.1
+    || Math.abs(levelR - -60) > 0.1;
+}
+
+function visualsAreActive() {
+  return transportIsActive()
+    || springIsActive(pinchRollerState)
+    || springIsActive(tensionerState.left)
+    || springIsActive(tensionerState.right)
+    || metersAreActive();
+}
+
+function startAnimationLoop() {
+  if (animationFrameId !== null) return;
+  lastFrame = performance.now();
+  visualDt = 1 / 60;
+  animationFrameId = requestAnimationFrame(tick);
+}
+
 function tick(now) {
-  const dt = Math.min(0.05, (now - lastFrame) / 1000);
+  animationFrameId = null;
+  const rawDt = Math.min(0.05, (now - lastFrame) / 1000);
+  const frameDt = smoothVisualDelta(rawDt);
   lastFrame = now;
-  updateMotion(dt);
-  updateMeters(dt);
+  updateMotion(frameDt, rawDt, now);
+  updateMeters(rawDt);
   renderCounter(audio.currentTime - zeroOffset);
-  requestAnimationFrame(tick);
+  if (visualsAreActive()) {
+    animationFrameId = requestAnimationFrame(tick);
+  }
 }
 
 fileInput.addEventListener("change", () => {
@@ -1098,6 +1281,7 @@ buttons.ff.addEventListener("pointerdown", (event) => {
 
 document.getElementById("zeroButton").addEventListener("click", () => {
   zeroOffset = audio.currentTime || 0;
+  renderCounter(audio.currentTime - zeroOffset);
 });
 
 document.querySelectorAll(".speed").forEach((button) => {
@@ -1114,9 +1298,14 @@ audio.addEventListener("loadedmetadata", () => {
   renderCounter(0);
 });
 
+updateStageSize();
 setMode("stop");
 renderCounter(0);
 updateTransportPhotos(0);
 updateTapePacks(tapeProgress());
-initReel3d();
-requestAnimationFrame(tick);
+initCssReelAnimations();
+window.addEventListener("resize", () => {
+  updateStageSize();
+  updateTransportPhotos(0);
+  updateTapePacks(tapeProgress());
+});
