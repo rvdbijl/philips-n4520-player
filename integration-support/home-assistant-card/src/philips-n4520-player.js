@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.2";
+const CARD_VERSION = "0.0.3";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -213,24 +213,23 @@ function leftTensionerToGuideTangent(leftTensioner) {
   };
 }
 
-function tapePath(progress, playing, nowSeconds) {
+function tapePath(progress, playing) {
   const leftRadius = packRadiusPx(tapePackDiameter(progress, "left"));
   const rightRadius = packRadiusPx(tapePackDiameter(progress, "right"));
   const lift = playing ? 1 : 0;
-  const wobbleScale = playing ? 0.55 : 0;
   const leftTensioner = tensionerPoint(
     LEFT_TENSIONER_REST,
     LEFT_TENSIONER_RUN,
     LEFT_TENSIONER_KICK,
     lift,
-    Math.sin(nowSeconds * 5.3 + 0.7) * wobbleScale,
+    0,
   );
   const rightTensioner = tensionerPoint(
     RIGHT_TENSIONER_REST,
     RIGHT_TENSIONER_RUN,
     RIGHT_TENSIONER_KICK,
     lift,
-    -Math.sin(nowSeconds * 4.9 + 2.1) * wobbleScale,
+    0,
   );
   const circles = [
     { center: LEFT_REEL_CENTER, radius: leftRadius },
@@ -330,21 +329,20 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._els = {};
     this._raf = 0;
     this._lastFrame = 0;
+    this._lastSync = 0;
+    this._lastMeter = 0;
     this._levelL = -60;
     this._levelR = -60;
-    this._reelL = 0;
-    this._reelR = 0;
-    this._guideL = 0;
-    this._guideR = 0;
-    this._pinch = 0;
-    this._tensionL = 0;
-    this._tensionR = 0;
     this._lastCounter = "";
     this._lastSticker = "";
     this._lastTapePath = "";
+    this._lastMotionKey = "";
+    this._isVisible = true;
+    this._visibilityObserver = null;
   }
 
   connectedCallback() {
+    this._observeVisibility();
     this._startLoop();
   }
 
@@ -353,6 +351,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       cancelAnimationFrame(this._raf);
       this._raf = 0;
     }
+    this._visibilityObserver?.disconnect();
+    this._visibilityObserver = null;
   }
 
   setConfig(config) {
@@ -369,6 +369,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._hass = hass;
     this._stateObj = hass?.states?.[this._config?.entity] || null;
     this._syncState();
+    this._startLoop();
   }
 
   getCardSize() {
@@ -385,9 +386,24 @@ class PhilipsN4520PlayerCard extends HTMLElement {
   }
 
   _startLoop() {
-    if (this._raf || !this.isConnected) return;
+    if (this._raf || !this.isConnected || !this._isVisible) return;
     this._lastFrame = performance.now();
+    this._lastMeter = this._lastMeter || this._lastFrame;
     this._raf = requestAnimationFrame((now) => this._tick(now));
+  }
+
+  _observeVisibility() {
+    if (this._visibilityObserver || !("IntersectionObserver" in window)) return;
+    this._visibilityObserver = new IntersectionObserver(([entry]) => {
+      this._isVisible = Boolean(entry?.isIntersecting);
+      if (this._isVisible) {
+        this._startLoop();
+      } else if (this._raf) {
+        cancelAnimationFrame(this._raf);
+        this._raf = 0;
+      }
+    });
+    this._visibilityObserver.observe(this);
   }
 
   _callService(service, data = {}) {
@@ -438,6 +454,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const mode = this._mode();
     const position = clamp(details.position, 0, details.duration || Number.MAX_SAFE_INTEGER);
     const progress = details.duration > 0 ? clamp(position / details.duration, 0, 1) : 0;
+    const visualProgress = Math.round(progress * 200) / 200;
     const sticker = [details.artist, details.title, details.album].filter(Boolean).join("\n");
 
     this._els.deck.dataset.mode = mode;
@@ -452,8 +469,10 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._els.progress.style.width = `${(progress * 100).toFixed(2)}%`;
     this._els.position.textContent = formatTime(position);
     this._els.duration.textContent = details.duration > 0 ? formatTime(details.duration) : "--:--";
-    this._els.leftPack.style.setProperty("--pack", `${tapePackPercent(progress, "left").toFixed(2)}%`);
-    this._els.rightPack.style.setProperty("--pack", `${tapePackPercent(progress, "right").toFixed(2)}%`);
+    this._els.leftPack.style.setProperty("--pack", `${tapePackPercent(visualProgress, "left").toFixed(2)}%`);
+    this._els.rightPack.style.setProperty("--pack", `${tapePackPercent(visualProgress, "right").toFixed(2)}%`);
+    this._applyMotionSpeeds(visualProgress, mode === "play");
+    this._updateTapePath(visualProgress, mode === "play");
 
     if (sticker !== this._lastSticker) {
       this._lastSticker = sticker;
@@ -473,6 +492,44 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
   _levelsConfigured() {
     return Boolean(this._config?.left_level_entity && this._config?.right_level_entity);
+  }
+
+  _applyMotionSpeeds(progress, playing) {
+    if (!this._els.deck) return;
+    if (!playing) {
+      this._lastMotionKey = "stopped";
+      return;
+    }
+
+    const tapeSpeed = SLOWEST_SPEED_IPS;
+    const leftDps = angularDegreesPerSecond(tapeSpeed, tapePackDiameter(progress, "left"));
+    const rightDps = angularDegreesPerSecond(tapeSpeed, tapePackDiameter(progress, "right"));
+    const pinchDps = angularDegreesPerSecond(tapeSpeed, PINCH_ROLLER_DIAMETER_IN);
+    const guideDps = angularDegreesPerSecond(tapeSpeed, GUIDE_ROLLER_DIAMETER_IN);
+    const tensionerDps = angularDegreesPerSecond(tapeSpeed, TENSIONER_ROLLER_DIAMETER_IN);
+    const durations = {
+      left: (360 / Math.max(1, leftDps)).toFixed(3),
+      right: (360 / Math.max(1, rightDps)).toFixed(3),
+      pinch: (360 / Math.max(1, pinchDps)).toFixed(3),
+      guide: (360 / Math.max(1, guideDps)).toFixed(3),
+      tensioner: (360 / Math.max(1, tensionerDps)).toFixed(3),
+    };
+    const key = Object.values(durations).join("|");
+    if (key === this._lastMotionKey) return;
+    this._lastMotionKey = key;
+    this._els.deck.style.setProperty("--left-reel-duration", `${durations.left}s`);
+    this._els.deck.style.setProperty("--right-reel-duration", `${durations.right}s`);
+    this._els.deck.style.setProperty("--pinch-duration", `${durations.pinch}s`);
+    this._els.deck.style.setProperty("--guide-duration", `${durations.guide}s`);
+    this._els.deck.style.setProperty("--tensioner-duration", `${durations.tensioner}s`);
+  }
+
+  _updateTapePath(progress, playing) {
+    const path = tapePath(progress, playing);
+    if (!path || path === this._lastTapePath) return;
+    this._lastTapePath = path;
+    this._els.tapeShadow.setAttribute("d", path);
+    this._els.tapeLine.setAttribute("d", path);
   }
 
   _targetLevels(nowSeconds) {
@@ -506,42 +563,28 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const dt = clamp((now - this._lastFrame) / 1000, 1 / 120, 1 / 20);
     this._lastFrame = now;
 
-    this._syncState();
-    const mode = this._mode();
-    const details = this._mediaDetails();
-    const position = clamp(details.position, 0, details.duration || Number.MAX_SAFE_INTEGER);
-    const progress = details.duration > 0 ? clamp(position / details.duration, 0, 1) : 0.5;
-    const playing = mode === "play";
-    const winding = false;
-    const tapeSpeed = playing ? SLOWEST_SPEED_IPS : 0;
-    const leftDps = angularDegreesPerSecond(tapeSpeed, tapePackDiameter(progress, "left"));
-    const rightDps = angularDegreesPerSecond(tapeSpeed, tapePackDiameter(progress, "right"));
-    const pinchDps = angularDegreesPerSecond(tapeSpeed, PINCH_ROLLER_DIAMETER_IN);
-    const guideDps = angularDegreesPerSecond(tapeSpeed, GUIDE_ROLLER_DIAMETER_IN);
-    const tensionerDps = angularDegreesPerSecond(tapeSpeed, TENSIONER_ROLLER_DIAMETER_IN);
+    if (now - this._lastSync >= 500) {
+      this._lastSync = now;
+      this._syncState();
+    }
+
+    if (now - this._lastMeter < 33) {
+      this._scheduleNextFrame();
+      return;
+    }
+
+    const meterDt = clamp((now - this._lastMeter) / 1000, 1 / 60, 0.12);
+    this._lastMeter = now;
+    const playing = this._mode() === "play";
     const nowSeconds = now / 1000;
     const [targetL, targetR] = this._targetLevels(nowSeconds);
     const response = playing || this._levelsConfigured() ? 4.8 : 3.2;
 
-    this._levelL += (targetL - this._levelL) * Math.min(1, dt * response);
-    this._levelR += (targetR - this._levelR) * Math.min(1, dt * response);
-    this._reelL -= leftDps * dt;
-    this._reelR -= rightDps * dt;
-    this._guideL += guideDps * dt;
-    this._guideR -= guideDps * dt;
-    this._pinch += pinchDps * dt;
-    this._tensionL -= tensionerDps * dt;
-    this._tensionR += tensionerDps * dt;
+    this._levelL += (targetL - this._levelL) * Math.min(1, meterDt * response);
+    this._levelR += (targetR - this._levelR) * Math.min(1, meterDt * response);
 
     const needleL = meterAngle(this._levelL);
     const needleR = meterAngle(this._levelR);
-    this._els.leftReel.style.setProperty("--rot", `${this._reelL.toFixed(3)}deg`);
-    this._els.rightReel.style.setProperty("--rot", `${this._reelR.toFixed(3)}deg`);
-    this._els.guideL.style.setProperty("--guide-rot", `${this._guideL.toFixed(3)}deg`);
-    this._els.guideR.style.setProperty("--guide-rot", `${this._guideR.toFixed(3)}deg`);
-    this._els.pinch.style.setProperty("--pinch-rot", `${this._pinch.toFixed(3)}deg`);
-    this._els.tensionL.style.setProperty("--tensioner-rot", `${this._tensionL.toFixed(3)}deg`);
-    this._els.tensionR.style.setProperty("--tensioner-rot", `${this._tensionR.toFixed(3)}deg`);
     this._els.needleL.style.setProperty("--angle", `${needleL.toFixed(2)}deg`);
     this._els.needleR.style.setProperty("--angle", `${needleR.toFixed(2)}deg`);
     this._els.needleShadowL.style.setProperty("--angle", `${needleL.toFixed(2)}deg`);
@@ -550,15 +593,16 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._els.ledR3.classList.toggle("on", needleR >= 16.4);
     this._els.ledL6.classList.toggle("on", this._levelL >= 5.7);
     this._els.ledR6.classList.toggle("on", this._levelR >= 5.7);
-    this._els.tape.classList.toggle("moving", playing || winding);
-    const path = tapePath(progress, playing, nowSeconds);
-    if (path && path !== this._lastTapePath) {
-      this._lastTapePath = path;
-      this._els.tapeShadow.setAttribute("d", path);
-      this._els.tapeLine.setAttribute("d", path);
-    }
 
-    this._raf = requestAnimationFrame((nextNow) => this._tick(nextNow));
+    this._scheduleNextFrame();
+  }
+
+  _scheduleNextFrame() {
+    if (!this._isVisible) return;
+    const levelsActive = Math.abs(this._levelL - -60) > 0.1 || Math.abs(this._levelR - -60) > 0.1;
+    if (this._mode() === "play" || levelsActive || this._levelsConfigured()) {
+      this._raf = requestAnimationFrame((nextNow) => this._tick(nextNow));
+    }
   }
 
   _renderShell() {
@@ -645,15 +689,23 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         }
 
         .photo-reel {
-          --rot: 0deg;
           position: absolute;
           inset: 0;
           border-radius: 50%;
           overflow: hidden;
-          transform: rotate(var(--rot));
           transform-origin: 50% 50%;
           will-change: transform;
           background: transparent;
+          animation: reel-spin var(--left-reel-duration, 2.8s) linear infinite;
+          animation-play-state: paused;
+        }
+
+        .right-reel {
+          animation-duration: var(--right-reel-duration, 2.5s);
+        }
+
+        .deck-photo-stage[data-mode="play"] .photo-reel {
+          animation-play-state: running;
         }
 
         .photo-reel::before {
@@ -753,12 +805,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         .tape-line {
           stroke: #3b2114;
           stroke-width: 3.2;
-          stroke-dasharray: 18 10;
           filter: drop-shadow(0 1px 1px rgba(27, 12, 6, 0.36));
-        }
-
-        .photo-tape-path.moving .tape-line {
-          animation: tape-run 0.5s linear infinite;
         }
 
         .pinch-roller-photo {
@@ -794,7 +841,12 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           clip-path: circle(35% at 48.5% 48%);
           opacity: 0.22;
           transform-origin: 48.5% 48%;
-          transform: rotate(var(--pinch-rot));
+          animation: roller-spin-cw var(--pinch-duration, 0.28s) linear infinite;
+          animation-play-state: paused;
+        }
+
+        .deck-photo-stage[data-mode="play"] .pinch-roller-face {
+          animation-play-state: running;
         }
 
         .head-assembly-occluder {
@@ -855,7 +907,16 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           clip-path: circle(31% at 48% 58%);
           opacity: 0.22;
           transform-origin: 48% 58%;
-          transform: rotate(var(--tensioner-rot));
+          animation: roller-spin-ccw var(--tensioner-duration, 0.24s) linear infinite;
+          animation-play-state: paused;
+        }
+
+        .tensioner-photo-right .tensioner-face {
+          animation-name: roller-spin-cw;
+        }
+
+        .deck-photo-stage[data-mode="play"] .tensioner-face {
+          animation-play-state: running;
         }
 
         .guide-roller-photo {
@@ -882,7 +943,16 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           clip-path: circle(35% at 40% 58%);
           opacity: 0.22;
           transform-origin: 40% 58%;
-          transform: rotate(var(--guide-rot));
+          animation: roller-spin-cw var(--guide-duration, 0.36s) linear infinite;
+          animation-play-state: paused;
+        }
+
+        .guide-roller-photo-right .guide-roller-face {
+          animation-name: roller-spin-ccw;
+        }
+
+        .deck-photo-stage[data-mode="play"] .guide-roller-face {
+          animation-play-state: running;
         }
 
         .vu-window {
@@ -1175,8 +1245,16 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           background: #d7a448;
         }
 
-        @keyframes tape-run {
-          to { stroke-dashoffset: -28; }
+        @keyframes reel-spin {
+          to { transform: rotate(-360deg); }
+        }
+
+        @keyframes roller-spin-cw {
+          to { transform: rotate(360deg); }
+        }
+
+        @keyframes roller-spin-ccw {
+          to { transform: rotate(-360deg); }
         }
       </style>
       <ha-card>
