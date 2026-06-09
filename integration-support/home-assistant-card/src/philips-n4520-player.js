@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.1";
+const CARD_VERSION = "0.0.2";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -41,6 +41,29 @@ const SEGMENTS = {
   "8": "a b c d e f g",
   "9": "a b c d f g",
 };
+
+const REEL_DIAMETER_IN = 10.5;
+const EMPTY_TAPE_DIAMETER_IN = 3.6;
+const FULL_TAPE_DIAMETER_IN = 9.35;
+const REEL_TEXTURE_SIZE = 588;
+const LEFT_REEL_CENTER = { x: 511, y: 349 };
+const RIGHT_REEL_CENTER = { x: 1081, y: 351 };
+const LEFT_GUIDE_ROLLER_CENTER = { x: 506, y: 736 };
+const RIGHT_GUIDE_ROLLER_CENTER = { x: 1094, y: 736 };
+const LEFT_TENSIONER_REST = { x: 402, y: 763 };
+const LEFT_TENSIONER_RUN = { x: 393, y: 722 };
+const LEFT_TENSIONER_KICK = { x: 395, y: 695 };
+const RIGHT_TENSIONER_REST = { x: 1199, y: 763 };
+const RIGHT_TENSIONER_RUN = { x: 1207, y: 722 };
+const RIGHT_TENSIONER_KICK = { x: 1204, y: 695 };
+const GUIDE_ROLLER_RADIUS_PX = 45;
+const TENSIONER_ROLLER_RADIUS_PX = 22;
+const LEFT_HEAD_COVER_ENTRY = { x: 596, y: 741 };
+const RIGHT_HEAD_COVER_EXIT = { x: 1000, y: 728 };
+const SLOWEST_SPEED_IPS = 3.75;
+const PINCH_ROLLER_DIAMETER_IN = 1.15;
+const GUIDE_ROLLER_DIAMETER_IN = 1.35;
+const TENSIONER_ROLLER_DIAMETER_IN = 0.95;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -95,11 +118,170 @@ function correctedPosition(stateObj) {
 }
 
 function tapePackPercent(progress, side) {
-  const empty = 3.6 * 3.6;
-  const full = 9.35 * 9.35;
+  const empty = EMPTY_TAPE_DIAMETER_IN * EMPTY_TAPE_DIAMETER_IN;
+  const full = FULL_TAPE_DIAMETER_IN * FULL_TAPE_DIAMETER_IN;
   const tape = full - empty;
   const area = side === "left" ? full - progress * tape : empty + progress * tape;
-  return clamp((Math.sqrt(area) / 10.5) * 100, 34, 90);
+  return clamp((Math.sqrt(area) / REEL_DIAMETER_IN) * 100, 34, 90);
+}
+
+function tapePackDiameter(progress, side) {
+  const empty = EMPTY_TAPE_DIAMETER_IN * EMPTY_TAPE_DIAMETER_IN;
+  const full = FULL_TAPE_DIAMETER_IN * FULL_TAPE_DIAMETER_IN;
+  const tape = full - empty;
+  const area = side === "left" ? full - progress * tape : empty + progress * tape;
+  return Math.sqrt(area);
+}
+
+function packRadiusPx(diameterIn) {
+  return (diameterIn / REEL_DIAMETER_IN) * (REEL_TEXTURE_SIZE / 2);
+}
+
+function mixPoint(a, b, amount) {
+  return {
+    x: a.x + (b.x - a.x) * amount,
+    y: a.y + (b.y - a.y) * amount,
+  };
+}
+
+function tensionerPoint(rest, run, kick, lift, wobble) {
+  const t = clamp(lift, 0, 1.22);
+  const base = t <= 1
+    ? mixPoint(rest, run, t)
+    : mixPoint(run, kick, (t - 1) / 0.22);
+  const curve = Math.sin(Math.min(1, t) * Math.PI);
+  return {
+    x: base.x + curve * wobble * 2.2,
+    y: base.y - curve * Math.abs(wobble) * 1.3,
+  };
+}
+
+function pointOnCircle(center, radius, degrees) {
+  const radians = degrees * (Math.PI / 180);
+  return {
+    x: center.x + Math.cos(radians) * radius,
+    y: center.y + Math.sin(radians) * radius,
+  };
+}
+
+function externalTangent(a, b, side) {
+  const dx = b.center.x - a.center.x;
+  const dy = b.center.y - a.center.y;
+  const distanceSq = dx * dx + dy * dy;
+  const radiusDelta = a.radius - b.radius;
+  const tangentSq = distanceSq - radiusDelta * radiusDelta;
+  if (distanceSq <= 0 || tangentSq <= 0) return null;
+
+  const tangent = Math.sqrt(tangentSq);
+  const vx = (dx * radiusDelta - dy * tangent * side) / distanceSq;
+  const vy = (dy * radiusDelta + dx * tangent * side) / distanceSq;
+  return {
+    from: {
+      x: a.center.x + vx * a.radius,
+      y: a.center.y + vy * a.radius,
+    },
+    to: {
+      x: b.center.x + vx * b.radius,
+      y: b.center.y + vy * b.radius,
+    },
+  };
+}
+
+function arcSegment(circle, from, to) {
+  const startAngle = Math.atan2(from.y - circle.center.y, from.x - circle.center.x);
+  const endAngle = Math.atan2(to.y - circle.center.y, to.x - circle.center.x);
+  const clockwiseDelta = (endAngle - startAngle + Math.PI * 2) % (Math.PI * 2);
+  const sweep = clockwiseDelta <= Math.PI ? 1 : 0;
+  return `A ${circle.radius.toFixed(1)} ${circle.radius.toFixed(1)} 0 0 ${sweep} ${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
+}
+
+function arcSegmentWithSweep(circle, from, to, sweep) {
+  return `A ${circle.radius.toFixed(1)} ${circle.radius.toFixed(1)} 0 0 ${sweep} ${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
+}
+
+function leftTensionerToGuideTangent(leftTensioner) {
+  const tensionerCenter = { x: leftTensioner.x - 1.3, y: leftTensioner.y + 5.1 };
+  return {
+    from: {
+      x: tensionerCenter.x - 8,
+      y: tensionerCenter.y + TENSIONER_ROLLER_RADIUS_PX,
+    },
+    to: {
+      x: LEFT_GUIDE_ROLLER_CENTER.x,
+      y: LEFT_GUIDE_ROLLER_CENTER.y - GUIDE_ROLLER_RADIUS_PX - 5,
+    },
+  };
+}
+
+function tapePath(progress, playing, nowSeconds) {
+  const leftRadius = packRadiusPx(tapePackDiameter(progress, "left"));
+  const rightRadius = packRadiusPx(tapePackDiameter(progress, "right"));
+  const lift = playing ? 1 : 0;
+  const wobbleScale = playing ? 0.55 : 0;
+  const leftTensioner = tensionerPoint(
+    LEFT_TENSIONER_REST,
+    LEFT_TENSIONER_RUN,
+    LEFT_TENSIONER_KICK,
+    lift,
+    Math.sin(nowSeconds * 5.3 + 0.7) * wobbleScale,
+  );
+  const rightTensioner = tensionerPoint(
+    RIGHT_TENSIONER_REST,
+    RIGHT_TENSIONER_RUN,
+    RIGHT_TENSIONER_KICK,
+    lift,
+    -Math.sin(nowSeconds * 4.9 + 2.1) * wobbleScale,
+  );
+  const circles = [
+    { center: LEFT_REEL_CENTER, radius: leftRadius },
+    {
+      center: { x: leftTensioner.x - 1.3, y: leftTensioner.y + 5.1 },
+      radius: TENSIONER_ROLLER_RADIUS_PX,
+    },
+    { center: LEFT_GUIDE_ROLLER_CENTER, radius: GUIDE_ROLLER_RADIUS_PX },
+    { center: RIGHT_GUIDE_ROLLER_CENTER, radius: GUIDE_ROLLER_RADIUS_PX },
+    {
+      center: { x: rightTensioner.x + 1.3, y: rightTensioner.y + 5.1 },
+      radius: TENSIONER_ROLLER_RADIUS_PX,
+    },
+    { center: RIGHT_REEL_CENTER, radius: rightRadius },
+  ];
+  const reelToLeftTensioner = externalTangent(circles[0], circles[1], 1);
+  const leftTensionerToGuide = leftTensionerToGuideTangent(leftTensioner);
+  const leftGuideTapeCircle = {
+    center: { x: LEFT_GUIDE_ROLLER_CENTER.x, y: LEFT_GUIDE_ROLLER_CENTER.y - 5 },
+    radius: GUIDE_ROLLER_RADIUS_PX,
+  };
+  const leftGuideToCover = pointOnCircle(leftGuideTapeCircle.center, leftGuideTapeCircle.radius, -25);
+  const rightGuideFromCover = pointOnCircle(RIGHT_GUIDE_ROLLER_CENTER, GUIDE_ROLLER_RADIUS_PX, -120);
+  const rightGuideToTensionerBase = pointOnCircle(RIGHT_GUIDE_ROLLER_CENTER, GUIDE_ROLLER_RADIUS_PX, 42);
+  const rightGuideToTensioner = {
+    ...rightGuideToTensionerBase,
+    y: rightGuideToTensionerBase.y - 45,
+  };
+  const rightTensionerBottom = pointOnCircle(circles[4].center, TENSIONER_ROLLER_RADIUS_PX, 90);
+  const rightTensionerToReel = externalTangent(circles[4], circles[5], 1);
+  if (!reelToLeftTensioner || !rightTensionerToReel) return "";
+
+  return [
+    `M ${reelToLeftTensioner.from.x.toFixed(1)} ${reelToLeftTensioner.from.y.toFixed(1)}`,
+    `L ${reelToLeftTensioner.to.x.toFixed(1)} ${reelToLeftTensioner.to.y.toFixed(1)}`,
+    `M ${leftTensionerToGuide.from.x.toFixed(1)} ${leftTensionerToGuide.from.y.toFixed(1)}`,
+    `L ${leftTensionerToGuide.to.x.toFixed(1)} ${leftTensionerToGuide.to.y.toFixed(1)}`,
+    arcSegmentWithSweep(leftGuideTapeCircle, leftTensionerToGuide.to, leftGuideToCover, 1),
+    `M ${LEFT_HEAD_COVER_ENTRY.x.toFixed(1)} ${LEFT_HEAD_COVER_ENTRY.y.toFixed(1)}`,
+    `L ${leftGuideToCover.x.toFixed(1)} ${leftGuideToCover.y.toFixed(1)}`,
+    `M ${RIGHT_HEAD_COVER_EXIT.x.toFixed(1)} ${RIGHT_HEAD_COVER_EXIT.y.toFixed(1)}`,
+    `L ${rightGuideFromCover.x.toFixed(1)} ${rightGuideFromCover.y.toFixed(1)}`,
+    arcSegmentWithSweep(circles[3], rightGuideFromCover, rightGuideToTensioner, 0),
+    `L ${rightTensionerBottom.x.toFixed(1)} ${rightTensionerBottom.y.toFixed(1)}`,
+    arcSegment(circles[4], rightTensionerBottom, rightTensionerToReel.from),
+    `L ${rightTensionerToReel.to.x.toFixed(1)} ${rightTensionerToReel.to.y.toFixed(1)}`,
+  ].join(" ");
+}
+
+function angularDegreesPerSecond(linearIps, diameterIn) {
+  return (linearIps / (Math.PI * diameterIn)) * 360;
 }
 
 function renderCounter(seconds) {
@@ -159,6 +341,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._tensionR = 0;
     this._lastCounter = "";
     this._lastSticker = "";
+    this._lastTapePath = "";
   }
 
   connectedCallback() {
@@ -330,10 +513,12 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const progress = details.duration > 0 ? clamp(position / details.duration, 0, 1) : 0.5;
     const playing = mode === "play";
     const winding = false;
-    const tapeSpeed = playing ? 1 : 0;
-    const leftDps = tapeSpeed * (85 + progress * 110);
-    const rightDps = tapeSpeed * (110 + (1 - progress) * 120);
-    const rollerDps = tapeSpeed * 420;
+    const tapeSpeed = playing ? SLOWEST_SPEED_IPS : 0;
+    const leftDps = angularDegreesPerSecond(tapeSpeed, tapePackDiameter(progress, "left"));
+    const rightDps = angularDegreesPerSecond(tapeSpeed, tapePackDiameter(progress, "right"));
+    const pinchDps = angularDegreesPerSecond(tapeSpeed, PINCH_ROLLER_DIAMETER_IN);
+    const guideDps = angularDegreesPerSecond(tapeSpeed, GUIDE_ROLLER_DIAMETER_IN);
+    const tensionerDps = angularDegreesPerSecond(tapeSpeed, TENSIONER_ROLLER_DIAMETER_IN);
     const nowSeconds = now / 1000;
     const [targetL, targetR] = this._targetLevels(nowSeconds);
     const response = playing || this._levelsConfigured() ? 4.8 : 3.2;
@@ -342,11 +527,11 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._levelR += (targetR - this._levelR) * Math.min(1, dt * response);
     this._reelL -= leftDps * dt;
     this._reelR -= rightDps * dt;
-    this._guideL += rollerDps * dt;
-    this._guideR -= rollerDps * dt;
-    this._pinch += rollerDps * dt;
-    this._tensionL -= rollerDps * 0.8 * dt;
-    this._tensionR += rollerDps * 0.8 * dt;
+    this._guideL += guideDps * dt;
+    this._guideR -= guideDps * dt;
+    this._pinch += pinchDps * dt;
+    this._tensionL -= tensionerDps * dt;
+    this._tensionR += tensionerDps * dt;
 
     const needleL = meterAngle(this._levelL);
     const needleR = meterAngle(this._levelR);
@@ -366,6 +551,12 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._els.ledL6.classList.toggle("on", this._levelL >= 5.7);
     this._els.ledR6.classList.toggle("on", this._levelR >= 5.7);
     this._els.tape.classList.toggle("moving", playing || winding);
+    const path = tapePath(progress, playing, nowSeconds);
+    if (path && path !== this._lastTapePath) {
+      this._lastTapePath = path;
+      this._els.tapeShadow.setAttribute("d", path);
+      this._els.tapeLine.setAttribute("d", path);
+    }
 
     this._raf = requestAnimationFrame((nextNow) => this._tick(nextNow));
   }
@@ -497,13 +688,13 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         .reel-sticker {
           position: absolute;
           z-index: 3;
-          left: 49%;
-          top: 19%;
-          width: 28%;
+          left: 18%;
+          top: 68%;
+          width: 25%;
           min-height: 16%;
           padding: 4.2% 4%;
           border-radius: 4px 6px 5px 3px;
-          transform: rotate(-9deg);
+          transform: rotate(7deg);
           background:
             linear-gradient(92deg, rgba(255,255,255,0.34), transparent 30%),
             linear-gradient(#f0e1ad, #d7bd73);
@@ -604,6 +795,27 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           opacity: 0.22;
           transform-origin: 48.5% 48%;
           transform: rotate(var(--pinch-rot));
+        }
+
+        .head-assembly-occluder {
+          position: absolute;
+          left: 54.3%;
+          top: 62.55%;
+          width: 7.1%;
+          height: 9.2%;
+          z-index: 6;
+          pointer-events: none;
+          opacity: 0;
+          clip-path: polygon(0 0, 74% 0, 67% 34%, 51% 52%, 30% 66%, 0 73%);
+          background:
+            radial-gradient(circle at 68% 12%, rgba(76, 81, 80, 0.58), transparent 20%),
+            linear-gradient(142deg, #1d2020 0%, #111313 48%, #070808 100%);
+          filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.36));
+          transition: opacity 160ms ease;
+        }
+
+        .deck-photo-stage[data-mode="play"] .head-assembly-occluder {
+          opacity: 1;
         }
 
         .tensioner-photo {
@@ -993,6 +1205,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
               <img class="pinch-roller-body" src="${ASSETS.pinch}" alt="">
               <img class="pinch-roller-face" src="${ASSETS.pinch}" alt="">
             </div>
+            <div class="head-assembly-occluder" aria-hidden="true"></div>
 
             <div class="reel-mount reel-mount-left">
               <div class="photo-reel left-reel">
@@ -1007,8 +1220,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
             </div>
 
             <svg class="photo-tape-path" viewBox="0 0 1600 1200" preserveAspectRatio="none" aria-hidden="true">
-              <path class="tape-shadow" d="M 400 720 L 506 690 L 596 741 M 1000 728 L 1094 690 L 1200 720"></path>
-              <path class="tape-line" d="M 400 720 L 506 690 L 596 741 M 1000 728 L 1094 690 L 1200 720"></path>
+              <path class="tape-shadow"></path>
+              <path class="tape-line"></path>
             </svg>
 
             <div class="vu-window vu-window-left" aria-hidden="true">
@@ -1071,6 +1284,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       tensionL: root.querySelector(".tensioner-photo-left"),
       tensionR: root.querySelector(".tensioner-photo-right"),
       tape: root.querySelector(".photo-tape-path"),
+      tapeShadow: root.querySelector(".tape-shadow"),
+      tapeLine: root.querySelector(".tape-line"),
       needleL: root.querySelector(".needle-l"),
       needleR: root.querySelector(".needle-r"),
       needleShadowL: root.querySelector(".needle-shadow-l"),
