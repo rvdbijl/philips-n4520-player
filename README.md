@@ -69,3 +69,23 @@ The current implementation keeps playback logic small so the visualizer can late
 - track metadata for the counter/display area
 
 If Music Assistant only exposes player state and not PCM/audio analyzer data, the reel and counter motion can still follow player progress, while VU meter movement would need either a server-side analyzer, browser-accessible stream, or simulated meter response from volume/metadata.
+
+## Home Assistant / Music Assistant Integration
+
+The HA/MA integration work now lives in `integration-support/`.
+
+- `integration-support/HA_MA_INTEGRATION_PLAN.md` records the architecture and phased plan.
+- `integration-support/home-assistant-card/` contains the card source and HACS usage notes.
+- `dist/philips-n4520-player.js` is the HACS dashboard plugin artifact.
+- `dist/assets/` contains the deck image assets required by the HACS card.
+- `hacs.json` declares the HACS display name and dashboard plugin filename.
+
+Current HACS custom card configuration:
+
+```yaml
+type: custom:philips-n4520-player
+entity: media_player.your_music_assistant_player
+name: Listening room
+```
+
+The current card uses Home Assistant `media_player` state for metadata, progress, controls, the reel sticker, and a fake VU fallback. Real VU meter support is planned for the next phase through a Music Assistant PCM analysis provider.

@@ -1,10 +1,12 @@
 {
   "name": "n4520-player",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API.",
   "main": "app.js",
   "scripts": {
-    "check": "node --input-type=module --check < app.js",
+    "check": "npm run check:app && npm run check:card",
+    "check:app": "node --input-type=module --check < app.js",
+    "check:card": "node --input-type=module --check < dist/philips-n4520-player.js",
     "test": "playwright test"
   },
   "keywords": [],
