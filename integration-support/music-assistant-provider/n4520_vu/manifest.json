@@ -1,0 +1,11 @@
+{
+  "type": "audio_analysis",
+  "domain": "n4520_vu",
+  "name": "Philips N4520 VU Levels",
+  "description": "Live stereo VU level frames for the Philips N4520 Home Assistant card.",
+  "codeowners": [
+    "@rvdbijl"
+  ],
+  "requirements": [],
+  "documentation": "https://github.com/rvdbijl/philips-n4520-player/tree/main/integration-support/music-assistant-provider"
+}

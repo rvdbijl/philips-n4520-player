@@ -61,18 +61,39 @@ The phase 1 card should not claim real VU support unless it receives real level 
 
 ## Phase 2: Music Assistant PCM Level Provider
 
-Create an MA `audio_analysis` provider, tentatively `n4520_vu`.
+Create an MA `audio_analysis` provider, `n4520_vu`.
+
+Status: initial provider scaffold exists under
+`integration-support/music-assistant-provider/n4520_vu`.
 
 Responsibilities:
 
 - Accept streaming analysis sessions.
 - Decode PCM format details from MA session data.
 - Compute stereo RMS and peak values from PCM.
-- Slice one-second chunks into shorter windows, likely 50-100 ms.
-- Apply VU ballistics or provide raw levels and let the card apply visual ballistics.
+- Slice one-second chunks into shorter windows. The first implementation uses
+  50 ms windows.
+- Provide raw reduced levels and let the card apply visual VU ballistics.
 - Keep latest level state keyed by session and/or queue/player.
 - Avoid storing full PCM buffers.
 - Return `None` from `_finalize` unless we later decide to persist track-level summary analysis.
+
+Implemented first provider behavior:
+
+- Overrides MA's persisted-analysis version gate so every live stream can be
+  accepted, even if the track was analyzed before.
+- Stores only bounded in-memory reduced level frames for active queue sessions.
+  This is intentionally position-addressable rather than latest-frame-only,
+  because MA can process PCM analysis faster than the player consumes audio.
+- Exposes `n4520_vu/levels` for current VU data.
+- Exposes `n4520_vu/sessions` for diagnostics.
+- Supports common little-endian PCM formats: 16-bit, 24-bit, 32-bit integer,
+  32-bit float, and 64-bit float.
+- Uses the MA queue's corrected elapsed time, when available, to return the
+  frame nearest to actual playback position. If queue timing is unavailable, it
+  returns the newest reduced frame.
+- Rejects non-queue analysis sessions so background library scans do not fill
+  memory with VU-only data.
 
 Open design question:
 
@@ -80,9 +101,57 @@ Open design question:
 
 Preferred first implementation:
 
-- An MA provider registers a lightweight API command such as `n4520_vu/levels`.
+- An MA provider registers a lightweight API command, `n4520_vu/levels`.
 - The card polls at a conservative rate or subscribes if a provider-specific event can be forwarded safely.
 - If upstream MA accepts a custom event type or generic plugin event pattern, switch to push updates.
+
+Installation constraint:
+
+- MA currently discovers providers from its server-side provider directory. This
+  repo can ship the provider source, but installation is not HACS-like. The
+  folder must be copied, overlaid, or built into the MA server at
+  `music_assistant/providers/n4520_vu`, then MA must be restarted and the
+  provider enabled.
+
+Playback constraint:
+
+- This works for paths that pass through MA's decoded stream pipeline. Playback
+  from MA to Sonos should work when Sonos is playing the MA stream URL. Direct
+  native Sonos playback outside MA will not produce VU data because MA never
+  receives the PCM.
+
+## Phase 2B: Sendspin Card Visualizer Pivot
+
+Status: first Home Assistant card pass implemented in v0.0.14.
+
+Reason for pivot:
+
+- The HA add-on copy test proved that a custom `audio_analysis` provider can be
+  placed inside the MA container, but the MA UI does not expose that provider
+  type in the normal add-provider list.
+- Music Assistant already ships Sendspin browser client support and a
+  server-side Sendspin proxy path.
+- `@sendspin/sendspin-js` exposes `SendspinCore`, which can receive decoded PCM
+  chunks without playing audible audio.
+
+Implemented card behavior:
+
+- Optional `sendspin_enabled` card config.
+- Configurable `ma_server_url` / `sendspin_url`, optional
+  `sendspin_auth_token`, `sendspin_player_id`, and `sendspin_client_name`.
+- Vendored `@sendspin/sendspin-js` 3.2.0 in the HACS artifact so the card does
+  not depend on a CDN.
+- The card opens the Sendspin `/sendspin` websocket/proxy endpoint, optionally
+  sends the MA auth message, adopts the socket into `SendspinCore`, and computes
+  VU dB targets from decoded PCM chunks.
+- Existing fake VU behavior remains as fallback.
+
+Open integration question:
+
+- Whether the card-created Sendspin client can be grouped cleanly with the real
+  target player in the user's MA setup, especially for Sonos paths. If grouping
+  does not route matching PCM to the card, the server-side audio-analysis
+  provider remains the fallback path.
 
 ## Phase 3: Shared Visual Engine Cleanup
 

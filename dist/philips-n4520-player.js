@@ -1,4 +1,5 @@
-const CARD_VERSION = "0.0.13";
+const CARD_VERSION = "0.0.14";
+const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -93,6 +94,44 @@ function hashString(value) {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+function dbFromLinear(value) {
+  if (!Number.isFinite(value) || value <= 0) return -60;
+  return clamp(20 * Math.log10(Math.max(value, 0.001)), -60, 6);
+}
+
+function deriveSendspinUrl(config) {
+  const raw = String(config?.sendspin_url || config?.ma_server_url || "").trim();
+  if (!raw) return "";
+
+  const endpoint = raw.endsWith("/sendspin") ? raw : `${raw.replace(/\/$/, "")}/sendspin`;
+  if (endpoint.startsWith("ws://") || endpoint.startsWith("wss://")) return endpoint;
+  if (endpoint.startsWith("http://")) return endpoint.replace(/^http:\/\//, "ws://");
+  if (endpoint.startsWith("https://")) return endpoint.replace(/^https:\/\//, "wss://");
+
+  const url = new URL(endpoint, window.location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
+}
+
+function sendspinPlayerId(config) {
+  if (config?.sendspin_player_id) return String(config.sendspin_player_id);
+  const entity = String(config?.entity || "media_player");
+  return `n4520_${hashString(entity).toString(16)}`;
+}
+
+function samplesToDb(samples) {
+  if (!samples?.length) return -60;
+  let sum = 0;
+  let peak = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const value = Number(samples[i]) || 0;
+    sum += value * value;
+    peak = Math.max(peak, Math.abs(value));
+  }
+  const rms = Math.sqrt(sum / samples.length);
+  return dbFromLinear(Math.max(rms * 1.8, peak * 0.45));
 }
 
 function meterAngle(dbVu) {
@@ -314,6 +353,11 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         { name: "entity", required: true, selector: { entity: { domain: "media_player" } } },
         { name: "name", selector: { text: {} } },
         { name: "ma_server_url", selector: { text: {} } },
+        { name: "sendspin_enabled", selector: { boolean: {} } },
+        { name: "sendspin_url", selector: { text: {} } },
+        { name: "sendspin_auth_token", selector: { text: {} } },
+        { name: "sendspin_player_id", selector: { text: {} } },
+        { name: "sendspin_client_name", selector: { text: {} } },
         { name: "fake_vu", selector: { boolean: {} } },
         { name: "left_level_entity", selector: { entity: {} } },
         { name: "right_level_entity", selector: { entity: {} } },
@@ -334,6 +378,15 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._lastMeter = 0;
     this._levelL = -60;
     this._levelR = -60;
+    this._sendspinLevelL = -60;
+    this._sendspinLevelR = -60;
+    this._sendspinLastAt = 0;
+    this._sendspinStatus = "disabled";
+    this._sendspinCore = null;
+    this._sendspinSocket = null;
+    this._sendspinConnectPromise = null;
+    this._sendspinKey = "";
+    this._sendspinGeneration = 0;
     this._lastCounter = "";
     this._lastSticker = "";
     this._lastTapePath = "";
@@ -350,6 +403,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
   connectedCallback() {
     this._observeVisibility();
+    this._ensureSendspin();
     this._startLoop();
   }
 
@@ -362,6 +416,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._stopReelAnimation("right");
     this._visibilityObserver?.disconnect();
     this._visibilityObserver = null;
+    this._disconnectSendspin("user_request");
   }
 
   setConfig(config) {
@@ -370,6 +425,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     }
     this._config = { fake_vu: true, ...config };
     this._renderShell();
+    this._ensureSendspin();
     this._syncState();
     this._startLoop();
   }
@@ -377,6 +433,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._stateObj = hass?.states?.[this._config?.entity] || null;
+    this._ensureSendspin();
     this._syncState();
     this._startLoop();
   }
@@ -421,6 +478,182 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       entity_id: this._config.entity,
       ...data,
     });
+  }
+
+  _sendspinConfigKey() {
+    if (!this._config?.sendspin_enabled) return "";
+    return [
+      deriveSendspinUrl(this._config),
+      sendspinPlayerId(this._config),
+      this._config.sendspin_client_name || "",
+      this._config.sendspin_auth_token ? "token" : "",
+      this._config.sendspin_library_url || DEFAULT_SENDSPIN_LIBRARY,
+    ].join("|");
+  }
+
+  _ensureSendspin() {
+    if (!this._config || !this.isConnected) return;
+    const key = this._sendspinConfigKey();
+    if (!key) {
+      this._disconnectSendspin("user_request");
+      this._sendspinStatus = "disabled";
+      return;
+    }
+    if (key === this._sendspinKey && (this._sendspinCore || this._sendspinConnectPromise)) return;
+    this._disconnectSendspin("restart");
+    this._sendspinKey = key;
+    const generation = this._sendspinGeneration;
+    this._sendspinConnectPromise = this._connectSendspin(generation)
+      .catch((error) => {
+        console.warn("Philips N4520: Sendspin connection failed", error);
+        this._sendspinStatus = "error";
+      })
+      .finally(() => {
+        this._sendspinConnectPromise = null;
+        this._syncState();
+      });
+  }
+
+  async _connectSendspin(generation) {
+    const sendspinUrl = deriveSendspinUrl(this._config);
+    if (!sendspinUrl) {
+      this._sendspinStatus = "missing URL";
+      return;
+    }
+
+    this._sendspinStatus = "connecting";
+    this._syncState();
+    const socket = await this._openSendspinSocket(sendspinUrl);
+    if (generation !== this._sendspinGeneration) {
+      socket.close();
+      return;
+    }
+    if (this._sendspinSocket && this._sendspinSocket !== socket) {
+      socket.close();
+      return;
+    }
+    this._sendspinSocket = socket;
+
+    const libraryUrl = this._config.sendspin_library_url || DEFAULT_SENDSPIN_LIBRARY;
+    const { SendspinCore } = await import(libraryUrl);
+    if (generation !== this._sendspinGeneration) {
+      socket.close();
+      return;
+    }
+    const core = new SendspinCore({
+      playerId: sendspinPlayerId(this._config),
+      clientName: this._config.sendspin_client_name || "Philips N4520 Visualizer",
+      webSocket: socket,
+      codecs: ["pcm", "flac"],
+      bufferCapacity: 3 * 1024 * 1024,
+      requiredLeadTimeMs: 250,
+      minBufferMs: 2500,
+    });
+
+    core.onAudioData = (chunk) => this._handleSendspinAudio(chunk);
+    core.onConnectionOpen = () => {
+      this._sendspinStatus = "connected";
+      this._syncState();
+    };
+    core.onConnectionClose = () => {
+      if (this._sendspinCore === core) {
+        this._sendspinStatus = "closed";
+        this._sendspinCore = null;
+        this._sendspinSocket = null;
+        this._syncState();
+      }
+    };
+    this._sendspinCore = core;
+    await core.connect();
+  }
+
+  _openSendspinSocket(url) {
+    return new Promise((resolve, reject) => {
+      let socket;
+      let settled = false;
+      let timeout = 0;
+      try {
+        socket = new WebSocket(url);
+      } catch (error) {
+        reject(error);
+        return;
+      }
+
+      socket.binaryType = "arraybuffer";
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        callback(value);
+      };
+
+      timeout = window.setTimeout(() => {
+        try {
+          socket.close();
+        } catch {
+          // Ignore close failures on timeout cleanup.
+        }
+        finish(reject, new Error("Sendspin connection timed out"));
+      }, 10000);
+
+      socket.onopen = () => {
+        if (this._config?.sendspin_auth_token) {
+          socket.send(JSON.stringify({
+            type: "auth",
+            token: this._config.sendspin_auth_token,
+            client_id: sendspinPlayerId(this._config),
+          }));
+          return;
+        }
+        finish(resolve, socket);
+      };
+
+      socket.onmessage = () => {
+        if (this._config?.sendspin_auth_token) {
+          finish(resolve, socket);
+        }
+      };
+
+      socket.onerror = () => finish(reject, new Error("Sendspin WebSocket error"));
+      socket.onclose = () => {
+        if (!settled) finish(reject, new Error("Sendspin WebSocket closed before ready"));
+      };
+    });
+  }
+
+  _disconnectSendspin(reason = "restart") {
+    this._sendspinKey = "";
+    this._sendspinGeneration += 1;
+    if (this._sendspinCore) {
+      try {
+        this._sendspinCore.disconnect(reason);
+      } catch {
+        // Ignore disconnect failures.
+      }
+    } else if (this._sendspinSocket) {
+      try {
+        this._sendspinSocket.close();
+      } catch {
+        // Ignore disconnect failures.
+      }
+    }
+    this._sendspinCore = null;
+    this._sendspinSocket = null;
+    this._sendspinConnectPromise = null;
+    this._sendspinLevelL = -60;
+    this._sendspinLevelR = -60;
+    this._sendspinLastAt = 0;
+  }
+
+  _handleSendspinAudio(chunk) {
+    const channels = chunk?.samples || [];
+    const left = channels[0];
+    const right = channels[1] || channels[0];
+    this._sendspinLevelL = samplesToDb(left);
+    this._sendspinLevelR = samplesToDb(right);
+    this._sendspinLastAt = performance.now();
+    this._sendspinStatus = "receiving audio";
+    this._startLoop();
   }
 
   _transport(service, intent = null, data = {}) {
@@ -490,7 +723,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._els.album.textContent = details.album;
     this._els.source.textContent = this._levelsConfigured()
       ? "VU levels: configured external level source"
-      : "VU levels: fake fallback until Music Assistant PCM provider is configured";
+      : this._sendspinSourceText();
     this._els.progress.style.width = `${(progress * 100).toFixed(2)}%`;
     this._els.position.textContent = formatTime(position);
     this._els.duration.textContent = details.duration > 0 ? formatTime(details.duration) : "--:--";
@@ -517,6 +750,17 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
   _levelsConfigured() {
     return Boolean(this._config?.left_level_entity && this._config?.right_level_entity);
+  }
+
+  _sendspinLevelsActive() {
+    return this._config?.sendspin_enabled
+      && performance.now() - this._sendspinLastAt < 1500;
+  }
+
+  _sendspinSourceText() {
+    if (this._sendspinLevelsActive()) return "VU levels: Music Assistant Sendspin";
+    if (this._config?.sendspin_enabled) return `VU levels: Sendspin ${this._sendspinStatus}`;
+    return "VU levels: fake fallback until Music Assistant levels are configured";
   }
 
   _currentReelAnimationAngle(side) {
@@ -628,6 +872,10 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       return [externalL, externalR];
     }
 
+    if (this._sendspinLevelsActive()) {
+      return [this._sendspinLevelL, this._sendspinLevelR];
+    }
+
     if (!this._config.fake_vu || this._mode() !== "play") {
       return [-60, -60];
     }
@@ -666,7 +914,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const playing = this._mode() === "play";
     const nowSeconds = now / 1000;
     const [targetL, targetR] = this._targetLevels(nowSeconds);
-    const response = playing || this._levelsConfigured() ? 4.8 : 3.2;
+    const response = playing || this._levelsConfigured() || this._sendspinLevelsActive() ? 4.8 : 3.2;
 
     this._levelL += (targetL - this._levelL) * Math.min(1, meterDt * response);
     this._levelR += (targetR - this._levelR) * Math.min(1, meterDt * response);
@@ -688,7 +936,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
   _scheduleNextFrame() {
     if (!this._isVisible) return;
     const levelsActive = Math.abs(this._levelL - -60) > 0.1 || Math.abs(this._levelR - -60) > 0.1;
-    if (this._mode() === "play" || levelsActive || this._levelsConfigured()) {
+    if (this._mode() === "play" || levelsActive || this._levelsConfigured() || this._config?.sendspin_enabled) {
       this._raf = requestAnimationFrame((nextNow) => this._tick(nextNow));
     }
   }
