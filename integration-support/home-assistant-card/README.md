@@ -52,6 +52,8 @@ sendspin_enabled: true
 ma_server_url: http://192.168.10.99:8095
 sendspin_player_id: n4520_visualizer
 sendspin_client_name: Philips N4520 Visualizer
+sendspin_vu_calibration_db: 22
+sendspin_vu_offset_ms: 0
 ```
 
 If the MA webserver requires direct auth, also provide a Music Assistant auth
@@ -66,7 +68,15 @@ directly at a `/sendspin` websocket/proxy endpoint. The card accepts `http`,
 `https`, `ws`, `wss`, and relative URLs.
 
 The card uses the vendored `@sendspin/sendspin-js` runtime in
-`dist/vendor/sendspin-js/`. The VU source priority is:
+`dist/vendor/sendspin-js/`. Sendspin delivers decoded, normalized PCM samples,
+so the card computes stereo RMS and maps it to the deck VU scale. The
+`sendspin_vu_calibration_db` value sets the dBFS reference for `0 VU`; raise it
+if the meters read too low, or lower it if they pin too often.
+`sendspin_vu_offset_ms` delays or advances the displayed VU interpretation in
+milliseconds. Use positive values when the meter leads the audible playback;
+negative values apply received frames immediately and can only truly advance
+the meter when Sendspin delivers audio ahead of the speaker. The VU source
+priority is:
 
 1. Explicit `left_level_entity` / `right_level_entity`.
 2. Music Assistant Sendspin decoded PCM.
