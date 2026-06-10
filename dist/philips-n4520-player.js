@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.4";
+const CARD_VERSION = "0.0.5";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -739,14 +739,14 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
         .reel-sticker {
           --sticker-position-angle: 142deg;
-          --sticker-radius: 24%;
+          --sticker-radius: 33%;
           position: absolute;
           z-index: 3;
           left: 50%;
           top: 50%;
-          width: 25%;
-          min-height: 16%;
-          padding: 4.2% 4%;
+          width: 33%;
+          min-height: 15%;
+          padding: 3.8% 4.2%;
           border-radius: 4px 6px 5px 3px;
           transform:
             translate(-50%, -50%)
