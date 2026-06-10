@@ -41,6 +41,13 @@ jobs:
         shell: bash
         run: |
           gh release view "$TAG" >/dev/null 2>&1 && exit 0
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "HACS dashboard card release $TAG."
+          notes_file=".github/release-notes/${TAG}.md"
+          if [ -f "$notes_file" ]; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file "$notes_file"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes
+          fi
