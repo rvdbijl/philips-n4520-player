@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.14";
+const CARD_VERSION = "0.0.15";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 
 const MEDIA_STATE_PLAYING = "playing";
@@ -121,17 +121,15 @@ function sendspinPlayerId(config) {
   return `n4520_${hashString(entity).toString(16)}`;
 }
 
-function samplesToDb(samples) {
+function samplesToVuDb(samples) {
   if (!samples?.length) return -60;
   let sum = 0;
-  let peak = 0;
   for (let i = 0; i < samples.length; i += 1) {
     const value = Number(samples[i]) || 0;
     sum += value * value;
-    peak = Math.max(peak, Math.abs(value));
   }
   const rms = Math.sqrt(sum / samples.length);
-  return dbFromLinear(Math.max(rms * 1.8, peak * 0.45));
+  return clamp(dbFromLinear(rms) + 14, -60, 6);
 }
 
 function meterAngle(dbVu) {
@@ -380,6 +378,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._levelR = -60;
     this._sendspinLevelL = -60;
     this._sendspinLevelR = -60;
+    this._sendspinSeenAudio = false;
     this._sendspinLastAt = 0;
     this._sendspinStatus = "disabled";
     this._sendspinCore = null;
@@ -642,6 +641,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._sendspinConnectPromise = null;
     this._sendspinLevelL = -60;
     this._sendspinLevelR = -60;
+    this._sendspinSeenAudio = false;
     this._sendspinLastAt = 0;
   }
 
@@ -649,11 +649,20 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const channels = chunk?.samples || [];
     const left = channels[0];
     const right = channels[1] || channels[0];
-    this._sendspinLevelL = samplesToDb(left);
-    this._sendspinLevelR = samplesToDb(right);
+    const nextL = samplesToVuDb(left);
+    const nextR = samplesToVuDb(right);
+    this._sendspinLevelL = this._smoothSendspinLevel(this._sendspinLevelL, nextL);
+    this._sendspinLevelR = this._smoothSendspinLevel(this._sendspinLevelR, nextR);
+    this._sendspinSeenAudio = true;
     this._sendspinLastAt = performance.now();
     this._sendspinStatus = "receiving audio";
     this._startLoop();
+  }
+
+  _smoothSendspinLevel(current, target) {
+    if (!Number.isFinite(current) || current <= -59) return target;
+    const alpha = target > current ? 0.34 : 0.12;
+    return current + (target - current) * alpha;
   }
 
   _transport(service, intent = null, data = {}) {
@@ -757,8 +766,19 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       && performance.now() - this._sendspinLastAt < 1500;
   }
 
+  _sendspinWaitingForAudio() {
+    return this._config?.sendspin_enabled
+      && ["connecting", "connected", "closed"].includes(this._sendspinStatus);
+  }
+
   _sendspinSourceText() {
-    if (this._sendspinLevelsActive()) return "VU levels: Music Assistant Sendspin";
+    if (this._sendspinLevelsActive()) return "VU levels: Music Assistant Sendspin PCM";
+    if (this._sendspinStatus === "connected") {
+      return "VU levels: Sendspin connected, waiting for routed audio";
+    }
+    if (this._sendspinStatus === "error" && this._config?.fake_vu) {
+      return "VU levels: Sendspin error, fake fallback active";
+    }
     if (this._config?.sendspin_enabled) return `VU levels: Sendspin ${this._sendspinStatus}`;
     return "VU levels: fake fallback until Music Assistant levels are configured";
   }
@@ -874,6 +894,10 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
     if (this._sendspinLevelsActive()) {
       return [this._sendspinLevelL, this._sendspinLevelR];
+    }
+
+    if (this._sendspinWaitingForAudio() || this._sendspinSeenAudio) {
+      return [-60, -60];
     }
 
     if (!this._config.fake_vu || this._mode() !== "play") {
