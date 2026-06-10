@@ -721,7 +721,7 @@ function peak(buffer) {
 
 function amplitudeToVuDb(value) {
   if (value <= 0.00001) return -60;
-  return 20 * Math.log10(value) + meterMaxDb;
+  return 20 * Math.log10(value);
 }
 
 function meterAngle(dbVu) {
@@ -744,12 +744,17 @@ function updateMeters(dt) {
   if (!audio.paused && analyserL && analyserR) {
     analyserL.getByteTimeDomainData(dataL);
     analyserR.getByteTimeDomainData(dataR);
-    rawL = amplitudeToVuDb(Math.max(rms(dataL) * 2.8, peak(dataL)));
-    rawR = amplitudeToVuDb(Math.max(rms(dataR) * 2.8, peak(dataR)));
+    // Use RMS-based VU metering for classic analog feel
+    // Calibrate so that typical program material shows around 0dB
+    const rmsValueL = rms(dataL) * 4.5;  // Calibrate for proper VU response
+    const rmsValueR = rms(dataR) * 4.5;
+    rawL = amplitudeToVuDb(rmsValueL);
+    rawR = amplitudeToVuDb(rmsValueR);
   }
 
-  levelL += (rawL - levelL) * Math.min(1, dt * 9);
-  levelR += (rawR - levelR) * Math.min(1, dt * 9);
+  // Classic VU meter ballistics with ~300ms integration time
+  levelL += (rawL - levelL) * Math.min(1, dt * 3);
+  levelR += (rawR - levelR) * Math.min(1, dt * 3);
 
   const angleL = meterAngle(levelL);
   const angleR = meterAngle(levelR);

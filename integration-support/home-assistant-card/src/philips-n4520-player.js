@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.12";
+const CARD_VERSION = "0.0.13";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -64,6 +64,7 @@ const SLOWEST_SPEED_IPS = 3.75;
 const PINCH_ROLLER_DIAMETER_IN = 1.15;
 const GUIDE_ROLLER_DIAMETER_IN = 1.35;
 const TENSIONER_ROLLER_DIAMETER_IN = 0.95;
+const REEL_ANIMATION_DURATION_THRESHOLD_MS = 250;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -341,8 +342,10 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._visibilityObserver = null;
     this._transportIntent = null;
     this._reelAngles = { left: 0, right: 0 };
-    this._reelDpsTarget = { left: 0, right: 0 };
-    this._reelDpsCurrent = { left: 0, right: 0 };
+    this._reelAnimations = {
+      left: { animation: null, sign: 0, duration: 0, baseAngle: 0 },
+      right: { animation: null, sign: 0, duration: 0, baseAngle: 0 },
+    };
   }
 
   connectedCallback() {
@@ -355,6 +358,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       cancelAnimationFrame(this._raf);
       this._raf = 0;
     }
+    this._stopReelAnimation("left");
+    this._stopReelAnimation("right");
     this._visibilityObserver?.disconnect();
     this._visibilityObserver = null;
   }
@@ -514,26 +519,76 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     return Boolean(this._config?.left_level_entity && this._config?.right_level_entity);
   }
 
-  _setReelSpeedTargets(leftDps, rightDps) {
-    this._reelDpsTarget.left = leftDps;
-    this._reelDpsTarget.right = rightDps;
+  _currentReelAnimationAngle(side) {
+    const state = this._reelAnimations[side];
+    if (!state?.animation || !Number.isFinite(state.duration) || state.duration <= 0) {
+      return this._reelAngles[side];
+    }
+    const currentTime = Number(state.animation.currentTime);
+    if (!Number.isFinite(currentTime)) return this._reelAngles[side];
+    const progress = (((currentTime % state.duration) + state.duration) % state.duration) / state.duration;
+    return state.baseAngle + state.sign * progress * 360;
   }
 
-  _updateReelPhase(dt) {
-    if (!this._els.leftReel || !this._els.rightReel || this._mode() !== "play") return;
-    const response = Math.min(1, dt * 3);
-    this._reelDpsCurrent.left += (this._reelDpsTarget.left - this._reelDpsCurrent.left) * response;
-    this._reelDpsCurrent.right += (this._reelDpsTarget.right - this._reelDpsCurrent.right) * response;
-    this._reelAngles.left -= this._reelDpsCurrent.left * dt;
-    this._reelAngles.right -= this._reelDpsCurrent.right * dt;
-    this._els.leftReel.style.transform = `rotate(${this._reelAngles.left.toFixed(3)}deg)`;
-    this._els.rightReel.style.transform = `rotate(${this._reelAngles.right.toFixed(3)}deg)`;
+  _stopReelAnimation(side) {
+    const state = this._reelAnimations[side];
+    const element = side === "left" ? this._els.leftReel : this._els.rightReel;
+    if (!state || !element) return;
+    const angle = this._currentReelAnimationAngle(side);
+    state.animation?.cancel();
+    state.animation = null;
+    state.sign = 0;
+    state.duration = 0;
+    state.baseAngle = angle;
+    this._reelAngles[side] = angle;
+    element.style.transform = `rotate(${angle.toFixed(3)}deg)`;
+  }
+
+  _setReelAnimationSpeed(side, element, desiredDps) {
+    if (!element?.animate) return;
+    const state = this._reelAnimations[side];
+    if (Math.abs(desiredDps) < 0.001 || this._mode() !== "play") {
+      this._stopReelAnimation(side);
+      return;
+    }
+
+    const sign = Math.sign(desiredDps);
+    const duration = Math.max(80, (360 / Math.abs(desiredDps)) * 1000);
+    const relativeChange = Math.abs(state.duration - duration) / Math.max(duration, state.duration, 1);
+    const shouldRecreate = !state.animation
+      || state.sign !== sign
+      || (Math.abs(state.duration - duration) > REEL_ANIMATION_DURATION_THRESHOLD_MS && relativeChange > 0.025);
+
+    if (shouldRecreate) {
+      const baseAngle = this._currentReelAnimationAngle(side);
+      state.animation?.cancel();
+      element.style.transform = "";
+      state.animation = element.animate(
+        [
+          { transform: `rotate(${baseAngle.toFixed(3)}deg)` },
+          { transform: `rotate(${(baseAngle + sign * 360).toFixed(3)}deg)` },
+        ],
+        {
+          duration,
+          iterations: Infinity,
+          easing: "linear",
+        },
+      );
+      state.sign = sign;
+      state.duration = duration;
+      state.baseAngle = baseAngle;
+      this._reelAngles[side] = baseAngle;
+    } else if (state.animation.playState !== "running") {
+      state.animation.play();
+    }
   }
 
   _applyMotionSpeeds(progress, playing) {
     if (!this._els.deck) return;
     if (!playing) {
       this._lastMotionKey = "stopped";
+      this._stopReelAnimation("left");
+      this._stopReelAnimation("right");
       return;
     }
 
@@ -548,7 +603,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       guide: (360 / Math.max(1, guideDps)).toFixed(3),
       tensioner: (360 / Math.max(1, tensionerDps)).toFixed(3),
     };
-    this._setReelSpeedTargets(leftDps, rightDps);
+    this._setReelAnimationSpeed("left", this._els.leftReel, -leftDps);
+    this._setReelAnimationSpeed("right", this._els.rightReel, -rightDps);
     const key = Object.values(durations).join("|");
     if (key === this._lastMotionKey) return;
     this._lastMotionKey = key;
@@ -593,9 +649,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
   _tick(now) {
     this._raf = 0;
-    const dt = clamp((now - this._lastFrame) / 1000, 1 / 120, 1 / 20);
     this._lastFrame = now;
-    this._updateReelPhase(dt);
 
     if (now - this._lastSync >= 500) {
       this._lastSync = now;
