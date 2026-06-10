@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.7";
+const CARD_VERSION = "0.0.8";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -339,6 +339,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._lastMotionKey = "";
     this._isVisible = true;
     this._visibilityObserver = null;
+    this._transportIntent = null;
   }
 
   connectedCallback() {
@@ -414,11 +415,15 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     });
   }
 
-  _seekBy(delta) {
-    const position = correctedPosition(this._stateObj);
-    const duration = Number(this._stateObj?.attributes?.media_duration) || 0;
-    const seekPosition = clamp(position + delta, 0, duration || Number.MAX_SAFE_INTEGER);
-    this._callService("media_seek", { seek_position: seekPosition });
+  _transport(service, intent = null, data = {}) {
+    this._transportIntent = intent;
+    this._callService(service, data);
+    this._syncState();
+  }
+
+  _togglePause() {
+    const mode = this._mode();
+    this._transport("media_play_pause", mode === "pause" || mode === "stop" ? "play" : "pause");
   }
 
   _levelFromEntity(entityId) {
@@ -429,8 +434,20 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
   _mode() {
     const state = this._stateObj?.state;
-    if (state === MEDIA_STATE_PLAYING) return "play";
-    if (state === MEDIA_STATE_PAUSED) return "pause";
+    if (state === MEDIA_STATE_PLAYING) {
+      if (this._transportIntent === "stop" || this._transportIntent === "pause") {
+        return this._transportIntent;
+      }
+      this._transportIntent = null;
+      return "play";
+    }
+    if (state === MEDIA_STATE_PAUSED) {
+      if (this._transportIntent === "play") {
+        return "play";
+      }
+      return this._transportIntent === "stop" ? "stop" : "pause";
+    }
+    this._transportIntent = null;
     return "stop";
   }
 
@@ -816,18 +833,23 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
         .pinch-roller-photo {
           --pinch-rot: 0deg;
+          --pinch-clip-left: 0%;
+          --pinch-clip-right: 0%;
           left: 57.1%;
           top: 67.4%;
           width: 5.35%;
           aspect-ratio: 1;
           z-index: 5;
           filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.46));
+          clip-path: polygon(100% var(--pinch-clip-right), 100% 100%, 0 100%, 0 var(--pinch-clip-left));
           transform: translate(-50%, -50%);
-          transition: top 180ms ease;
+          transition: top 180ms ease, clip-path 180ms ease;
         }
 
         .deck-photo-stage[data-mode="play"] .pinch-roller-photo {
           top: 65.6%;
+          --pinch-clip-left: 62%;
+          --pinch-clip-right: 24%;
         }
 
         .pinch-roller-body,
@@ -856,24 +878,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         }
 
         .head-assembly-occluder {
-          position: absolute;
-          left: 54.3%;
-          top: 62.55%;
-          width: 7.1%;
-          height: 9.2%;
-          z-index: 6;
-          pointer-events: none;
-          opacity: 0;
-          clip-path: polygon(0 0, 74% 0, 67% 34%, 51% 52%, 30% 66%, 0 73%);
-          background:
-            radial-gradient(circle at 68% 12%, rgba(76, 81, 80, 0.58), transparent 20%),
-            linear-gradient(142deg, #1d2020 0%, #111313 48%, #070808 100%);
-          filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.36));
-          transition: opacity 160ms ease;
-        }
-
-        .deck-photo-stage[data-mode="play"] .head-assembly-occluder {
-          opacity: 1;
+          display: none;
         }
 
         .tensioner-photo {
@@ -1324,11 +1329,11 @@ class PhilipsN4520PlayerCard extends HTMLElement {
               <span class="led l6 led-r6"></span>
             </div>
 
-            <button class="hotspot transport-hotspot rewind" aria-label="rewind 15 seconds"></button>
+            <button class="hotspot transport-hotspot rewind" aria-label="previous track"></button>
             <button class="hotspot transport-hotspot stop" aria-label="stop"></button>
             <button class="hotspot transport-hotspot play" aria-label="play"></button>
             <button class="hotspot transport-hotspot pause" aria-label="pause"></button>
-            <button class="hotspot transport-hotspot ff" aria-label="fast forward 15 seconds"></button>
+            <button class="hotspot transport-hotspot ff" aria-label="next track"></button>
             <span class="pause-indicator" aria-hidden="true"></span>
             <div class="counter-overlay" aria-label="elapsed time"></div>
           </div>
@@ -1390,11 +1395,11 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       duration: root.querySelector(".duration"),
     };
 
-    root.querySelector(".rewind")?.addEventListener("click", () => this._seekBy(-15));
-    root.querySelector(".ff")?.addEventListener("click", () => this._seekBy(15));
-    root.querySelector(".play")?.addEventListener("click", () => this._callService("media_play"));
-    root.querySelector(".pause")?.addEventListener("click", () => this._callService("media_pause"));
-    root.querySelector(".stop")?.addEventListener("click", () => this._callService("media_stop"));
+    root.querySelector(".rewind")?.addEventListener("click", () => this._transport("media_previous_track"));
+    root.querySelector(".ff")?.addEventListener("click", () => this._transport("media_next_track"));
+    root.querySelector(".play")?.addEventListener("click", () => this._transport("media_play", "play"));
+    root.querySelector(".pause")?.addEventListener("click", () => this._togglePause());
+    root.querySelector(".stop")?.addEventListener("click", () => this._transport("media_stop", "stop"));
   }
 }
 
