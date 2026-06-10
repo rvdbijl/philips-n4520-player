@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.3";
+const CARD_VERSION = "0.0.4";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -738,23 +738,35 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         }
 
         .reel-sticker {
+          --sticker-position-angle: 142deg;
+          --sticker-radius: 24%;
           position: absolute;
           z-index: 3;
-          left: 18%;
-          top: 68%;
+          left: 50%;
+          top: 50%;
           width: 25%;
           min-height: 16%;
           padding: 4.2% 4%;
           border-radius: 4px 6px 5px 3px;
-          transform: rotate(7deg);
+          transform:
+            translate(-50%, -50%)
+            rotate(var(--sticker-position-angle))
+            translateX(var(--sticker-radius))
+            rotate(-180deg);
           background:
-            linear-gradient(92deg, rgba(255,255,255,0.34), transparent 30%),
-            linear-gradient(#f0e1ad, #d7bd73);
+            linear-gradient(90deg, rgba(204, 68, 54, 0.18) 0 9%, transparent 9%),
+            repeating-linear-gradient(180deg, transparent 0 1.34em, rgba(69, 116, 170, 0.26) 1.34em calc(1.34em + 1px), transparent calc(1.34em + 1px) 1.62em),
+            linear-gradient(94deg, rgba(255,255,255,0.62), transparent 32%),
+            linear-gradient(#f5f0df, #ebe3cf);
           color: #2d2117;
-          font-family: "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
+          font-family: "Segoe Print", "Bradley Hand ITC", "Bradley Hand", "Marker Felt", "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Noteworthy", cursive;
           font-size: clamp(5px, 0.78vw, 13px);
           line-height: 1.04;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.28);
+          letter-spacing: 0;
+          border: 1px solid rgba(98, 83, 58, 0.5);
+          box-shadow:
+            0 1px 1px rgba(255, 255, 255, 0.45) inset,
+            0 2px 4px rgba(0, 0, 0, 0.24);
           display: grid;
           align-content: center;
           gap: 0.08em;
