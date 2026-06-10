@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.6";
+const CARD_VERSION = "0.0.7";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -746,7 +746,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           min-height: 11%;
           padding: 2.6% 3.2%;
           border-radius: 4px 6px 5px 3px;
-          transform: translate(-50%, -50%) rotate(49deg);
+          transform: translate(-50%, -50%) rotate(22deg);
           background:
             linear-gradient(90deg, rgba(204, 68, 54, 0.18) 0 9%, transparent 9%),
             repeating-linear-gradient(180deg, transparent 0 1.34em, rgba(69, 116, 170, 0.26) 1.34em calc(1.34em + 1px), transparent calc(1.34em + 1px) 1.62em),
