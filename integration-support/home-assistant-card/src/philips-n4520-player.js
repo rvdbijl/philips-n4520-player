@@ -1,6 +1,9 @@
-const CARD_VERSION = "0.0.16";
+const CARD_VERSION = "0.0.17";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 const DEFAULT_SENDSPIN_VU_CALIBRATION_DB = 22;
+const DEFAULT_SENDSPIN_VU_WINDOW_MS = 25;
+const METER_FRAME_INTERVAL_MS = 16;
+const SENDSPIN_VU_QUEUE_LIMIT = 400;
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -122,14 +125,17 @@ function sendspinPlayerId(config) {
   return `n4520_${hashString(entity).toString(16)}`;
 }
 
-function samplesToVuDb(samples, calibrationDb = DEFAULT_SENDSPIN_VU_CALIBRATION_DB) {
+function samplesToVuDb(samples, calibrationDb = DEFAULT_SENDSPIN_VU_CALIBRATION_DB, start = 0, end = samples?.length || 0) {
   if (!samples?.length) return -60;
+  const first = clamp(Math.floor(start), 0, samples.length);
+  const last = clamp(Math.floor(end), first, samples.length);
+  if (last <= first) return -60;
   let sum = 0;
-  for (let i = 0; i < samples.length; i += 1) {
+  for (let i = first; i < last; i += 1) {
     const value = Number(samples[i]) || 0;
     sum += value * value;
   }
-  const rms = Math.sqrt(sum / samples.length);
+  const rms = Math.sqrt(sum / (last - first));
   return clamp(dbFromLinear(rms) + calibrationDb, -60, 6);
 }
 
@@ -359,6 +365,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         { name: "sendspin_client_name", selector: { text: {} } },
         { name: "sendspin_vu_calibration_db", selector: { number: { min: 0, max: 36, step: 1, mode: "box" } } },
         { name: "sendspin_vu_offset_ms", selector: { number: { min: -2000, max: 2000, step: 25, mode: "box" } } },
+        { name: "sendspin_vu_window_ms", selector: { number: { min: 10, max: 250, step: 5, mode: "box" } } },
         { name: "fake_vu", selector: { boolean: {} } },
         { name: "left_level_entity", selector: { entity: {} } },
         { name: "right_level_entity", selector: { entity: {} } },
@@ -529,6 +536,12 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     return clamp(configured, -2000, 2000);
   }
 
+  _sendspinVuWindowMs() {
+    const configured = Number(this._config?.sendspin_vu_window_ms);
+    if (!Number.isFinite(configured)) return DEFAULT_SENDSPIN_VU_WINDOW_MS;
+    return clamp(configured, 10, 250);
+  }
+
   async _connectSendspin(generation) {
     const sendspinUrl = deriveSendspinUrl(this._config);
     if (!sendspinUrl) {
@@ -666,22 +679,51 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const channels = chunk?.samples || [];
     const left = channels[0];
     const right = channels[1] || channels[0];
+    if (!left?.length) return;
+
     const calibrationDb = this._sendspinVuCalibrationDb();
-    const nextL = samplesToVuDb(left, calibrationDb);
-    const nextR = samplesToVuDb(right, calibrationDb);
+    const sampleRate = Number(chunk?.sampleRate);
+    const windowMs = this._sendspinVuWindowMs();
     this._sendspinSeenAudio = true;
     this._sendspinStatus = "receiving audio";
     const now = performance.now();
-    const displayAt = now + this._sendspinVuOffsetMs();
-    if (displayAt <= now) {
-      this._applySendspinLevelFrame(nextL, nextR, now);
-    } else {
-      this._sendspinQueuedLevels.push({ at: displayAt, left: nextL, right: nextR });
-      if (this._sendspinQueuedLevels.length > 240) {
-        this._sendspinQueuedLevels.splice(0, this._sendspinQueuedLevels.length - 240);
-      }
+    const baseDisplayAt = now + this._sendspinVuOffsetMs();
+
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+      this._queueOrApplySendspinLevelFrame(
+        samplesToVuDb(left, calibrationDb),
+        samplesToVuDb(right, calibrationDb),
+        baseDisplayAt,
+        now,
+      );
+      this._startLoop();
+      return;
+    }
+
+    const sampleCount = Math.min(left.length, right?.length || left.length);
+    const samplesPerWindow = Math.max(1, Math.round((sampleRate * windowMs) / 1000));
+    for (let start = 0; start < sampleCount; start += samplesPerWindow) {
+      const end = Math.min(sampleCount, start + samplesPerWindow);
+      const frameAt = baseDisplayAt + (start / sampleRate) * 1000;
+      this._queueOrApplySendspinLevelFrame(
+        samplesToVuDb(left, calibrationDb, start, end),
+        samplesToVuDb(right, calibrationDb, start, end),
+        frameAt,
+        now,
+      );
     }
     this._startLoop();
+  }
+
+  _queueOrApplySendspinLevelFrame(left, right, displayAt, now) {
+    if (displayAt <= now) {
+      this._applySendspinLevelFrame(left, right, now);
+      return;
+    }
+    this._sendspinQueuedLevels.push({ at: displayAt, left, right });
+    if (this._sendspinQueuedLevels.length > SENDSPIN_VU_QUEUE_LIMIT) {
+      this._sendspinQueuedLevels.splice(0, this._sendspinQueuedLevels.length - SENDSPIN_VU_QUEUE_LIMIT);
+    }
   }
 
   _applyDueSendspinLevelFrames(now) {
@@ -695,15 +737,9 @@ class PhilipsN4520PlayerCard extends HTMLElement {
   }
 
   _applySendspinLevelFrame(left, right, now) {
-    this._sendspinLevelL = this._smoothSendspinLevel(this._sendspinLevelL, left);
-    this._sendspinLevelR = this._smoothSendspinLevel(this._sendspinLevelR, right);
+    this._sendspinLevelL = left;
+    this._sendspinLevelR = right;
     this._sendspinLastAt = now;
-  }
-
-  _smoothSendspinLevel(current, target) {
-    if (!Number.isFinite(current) || current <= -59) return target;
-    const alpha = target > current ? 0.34 : 0.12;
-    return current + (target - current) * alpha;
   }
 
   _transport(service, intent = null, data = {}) {
@@ -969,7 +1005,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       this._syncState();
     }
 
-    if (now - this._lastMeter < 33) {
+    if (now - this._lastMeter < METER_FRAME_INTERVAL_MS) {
       this._scheduleNextFrame();
       return;
     }
