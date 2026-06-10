@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.17";
+const CARD_VERSION = "0.0.18";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 const DEFAULT_SENDSPIN_VU_CALIBRATION_DB = 22;
 const DEFAULT_SENDSPIN_VU_WINDOW_MS = 25;
@@ -366,6 +366,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         { name: "sendspin_vu_calibration_db", selector: { number: { min: 0, max: 36, step: 1, mode: "box" } } },
         { name: "sendspin_vu_offset_ms", selector: { number: { min: -2000, max: 2000, step: 25, mode: "box" } } },
         { name: "sendspin_vu_window_ms", selector: { number: { min: 10, max: 250, step: 5, mode: "box" } } },
+        { name: "sendspin_debug", selector: { boolean: {} } },
         { name: "fake_vu", selector: { boolean: {} } },
         { name: "left_level_entity", selector: { entity: {} } },
         { name: "right_level_entity", selector: { entity: {} } },
@@ -391,6 +392,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._sendspinSeenAudio = false;
     this._sendspinLastAt = 0;
     this._sendspinQueuedLevels = [];
+    this._sendspinDebugStats = this._createSendspinDebugStats();
     this._sendspinStatus = "disabled";
     this._sendspinCore = null;
     this._sendspinSocket = null;
@@ -433,7 +435,11 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     if (!config?.entity) {
       throw new Error("entity is required");
     }
+    const oldVuTimingKey = this._sendspinVuTimingKey();
     this._config = { fake_vu: true, ...config };
+    if (oldVuTimingKey && oldVuTimingKey !== this._sendspinVuTimingKey()) {
+      this._clearSendspinVuFrames();
+    }
     this._renderShell();
     this._ensureSendspin();
     this._syncState();
@@ -542,6 +548,38 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     return clamp(configured, 10, 250);
   }
 
+  _sendspinVuTimingKey() {
+    if (!this._config) return "";
+    return [
+      this._config.sendspin_vu_calibration_db ?? "",
+      this._config.sendspin_vu_offset_ms ?? "",
+      this._config.sendspin_vu_window_ms ?? "",
+    ].join("|");
+  }
+
+  _createSendspinDebugStats() {
+    return {
+      schedule: "idle",
+      synced: false,
+      sampleRate: 0,
+      chunkMs: 0,
+      windowMs: DEFAULT_SENDSPIN_VU_WINDOW_MS,
+      frames: 0,
+      queue: 0,
+      late: 0,
+      leadMs: 0,
+      timeErrorMs: null,
+    };
+  }
+
+  _clearSendspinVuFrames() {
+    this._sendspinLevelL = -60;
+    this._sendspinLevelR = -60;
+    this._sendspinLastAt = 0;
+    this._sendspinQueuedLevels = [];
+    this._sendspinDebugStats = this._createSendspinDebugStats();
+  }
+
   async _connectSendspin(generation) {
     const sendspinUrl = deriveSendspinUrl(this._config);
     if (!sendspinUrl) {
@@ -579,6 +617,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     });
 
     core.onAudioData = (chunk) => this._handleSendspinAudio(chunk);
+    core.onStreamClear = () => this._clearSendspinVuFrames();
+    core.onStreamEnd = () => this._clearSendspinVuFrames();
     core.onConnectionOpen = () => {
       this._sendspinStatus = "connected";
       this._syncState();
@@ -672,7 +712,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._sendspinLevelR = -60;
     this._sendspinSeenAudio = false;
     this._sendspinLastAt = 0;
-    this._sendspinQueuedLevels = [];
+    this._clearSendspinVuFrames();
   }
 
   _handleSendspinAudio(chunk) {
@@ -687,7 +727,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._sendspinSeenAudio = true;
     this._sendspinStatus = "receiving audio";
     const now = performance.now();
-    const baseDisplayAt = now + this._sendspinVuOffsetMs();
+    const baseDisplayAt = this._sendspinChunkDisplayTimeMs(chunk, now);
 
     if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
       this._queueOrApplySendspinLevelFrame(
@@ -696,15 +736,28 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         baseDisplayAt,
         now,
       );
+      this._updateSendspinDebugStats({
+        sampleRate: 0,
+        chunkMs: 0,
+        windowMs,
+        frames: 1,
+        late: baseDisplayAt <= now ? 1 : 0,
+        queue: this._sendspinQueuedLevels.length,
+        leadMs: baseDisplayAt - now,
+      });
       this._startLoop();
       return;
     }
 
     const sampleCount = Math.min(left.length, right?.length || left.length);
     const samplesPerWindow = Math.max(1, Math.round((sampleRate * windowMs) / 1000));
+    let frameCount = 0;
+    let lateCount = 0;
     for (let start = 0; start < sampleCount; start += samplesPerWindow) {
       const end = Math.min(sampleCount, start + samplesPerWindow);
       const frameAt = baseDisplayAt + (start / sampleRate) * 1000;
+      frameCount += 1;
+      if (frameAt <= now) lateCount += 1;
       this._queueOrApplySendspinLevelFrame(
         samplesToVuDb(left, calibrationDb, start, end),
         samplesToVuDb(right, calibrationDb, start, end),
@@ -712,7 +765,55 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         now,
       );
     }
+    this._updateSendspinDebugStats({
+      sampleRate,
+      chunkMs: (sampleCount / sampleRate) * 1000,
+      windowMs,
+      frames: frameCount,
+      late: lateCount,
+      queue: this._sendspinQueuedLevels.length,
+      leadMs: baseDisplayAt - now,
+    });
+    this._sortSendspinLevelQueue();
     this._startLoop();
+  }
+
+  _sendspinChunkDisplayTimeMs(chunk, now) {
+    const offsetMs = this._sendspinVuOffsetMs();
+    const serverTimeUs = Number(chunk?.serverTimeUs);
+    const timeFilter = this._sendspinCore?._timeFilter;
+    const synced = Boolean(timeFilter?.is_synchronized);
+    const timeErrorMs = Number(this._sendspinCore?.timeSyncInfo?.error);
+
+    if (
+      synced
+      && Number.isFinite(serverTimeUs)
+      && typeof timeFilter.computeClientTime === "function"
+    ) {
+      const clientTimeMs = timeFilter.computeClientTime(serverTimeUs) / 1000;
+      if (Number.isFinite(clientTimeMs)) {
+        this._updateSendspinDebugStats({
+          schedule: "server",
+          synced: true,
+          timeErrorMs: Number.isFinite(timeErrorMs) ? timeErrorMs : null,
+        });
+        return clientTimeMs + offsetMs;
+      }
+    }
+
+    this._updateSendspinDebugStats({
+      schedule: "arrival",
+      synced,
+      timeErrorMs: Number.isFinite(timeErrorMs) ? timeErrorMs : null,
+    });
+    return now + offsetMs;
+  }
+
+  _updateSendspinDebugStats(values) {
+    this._sendspinDebugStats = {
+      ...this._sendspinDebugStats,
+      ...values,
+    };
   }
 
   _queueOrApplySendspinLevelFrame(left, right, displayAt, now) {
@@ -726,6 +827,12 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     }
   }
 
+  _sortSendspinLevelQueue() {
+    if (this._sendspinQueuedLevels.length > 1) {
+      this._sendspinQueuedLevels.sort((a, b) => a.at - b.at);
+    }
+  }
+
   _applyDueSendspinLevelFrames(now) {
     let frame = null;
     while (this._sendspinQueuedLevels.length && this._sendspinQueuedLevels[0].at <= now) {
@@ -733,6 +840,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     }
     if (frame) {
       this._applySendspinLevelFrame(frame.left, frame.right, now);
+      this._updateSendspinDebugStats({ queue: this._sendspinQueuedLevels.length });
     }
   }
 
@@ -849,15 +957,31 @@ class PhilipsN4520PlayerCard extends HTMLElement {
   }
 
   _sendspinSourceText() {
-    if (this._sendspinLevelsActive()) return "VU levels: Music Assistant Sendspin PCM";
+    const debug = this._sendspinDebugText();
+    if (this._sendspinLevelsActive()) return `VU levels: Music Assistant Sendspin PCM${debug}`;
     if (this._sendspinStatus === "connected") {
-      return "VU levels: Sendspin connected, waiting for routed audio";
+      return `VU levels: Sendspin connected, waiting for routed audio${debug}`;
     }
     if (this._sendspinStatus === "error" && this._config?.fake_vu) {
-      return "VU levels: Sendspin error, fake fallback active";
+      return `VU levels: Sendspin error, fake fallback active${debug}`;
     }
-    if (this._config?.sendspin_enabled) return `VU levels: Sendspin ${this._sendspinStatus}`;
+    if (this._config?.sendspin_enabled) return `VU levels: Sendspin ${this._sendspinStatus}${debug}`;
     return "VU levels: fake fallback until Music Assistant levels are configured";
+  }
+
+  _sendspinDebugText() {
+    if (!this._config?.sendspin_debug) return "";
+    const stats = this._sendspinDebugStats || this._createSendspinDebugStats();
+    const sampleRate = stats.sampleRate ? `${Math.round(stats.sampleRate / 100) / 10}kHz` : "n/a";
+    const timeError = Number.isFinite(stats.timeErrorMs) ? `${Math.round(stats.timeErrorMs)}ms` : "n/a";
+    return ` | ${stats.schedule}/${stats.synced ? "sync" : "nosync"}`
+      + ` sr ${sampleRate}`
+      + ` chunk ${Math.round(stats.chunkMs)}ms`
+      + ` win ${Math.round(stats.windowMs)}ms`
+      + ` q ${stats.queue}`
+      + ` late ${stats.late}/${stats.frames}`
+      + ` lead ${Math.round(stats.leadMs)}ms`
+      + ` err ${timeError}`;
   }
 
   _currentReelAnimationAngle(side) {

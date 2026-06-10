@@ -55,6 +55,7 @@ sendspin_client_name: Philips N4520 Visualizer
 sendspin_vu_calibration_db: 22
 sendspin_vu_offset_ms: 0
 sendspin_vu_window_ms: 25
+sendspin_debug: false
 ```
 
 If the MA webserver requires direct auth, also provide a Music Assistant auth
@@ -79,6 +80,16 @@ negative values apply received frames immediately and can only truly advance
 the meter when Sendspin delivers audio ahead of the speaker.
 `sendspin_vu_window_ms` controls how much decoded PCM is averaged into each VU
 frame. Lower values feel faster and more detailed; higher values feel smoother.
+Set `sendspin_debug: true` while tuning to show the active timing source,
+sample rate, chunk duration, window duration, queue depth, late frames, lead
+time, and Sendspin time-sync error in the card status line.
+
+Each independently routed deck card should have its own Sendspin target. The
+default `sendspin_player_id` is derived from the configured `entity`, which is
+usually enough for cards tied to different media players. If you place multiple
+cards for the same media player on different dashboards, set explicit unique
+`sendspin_player_id` values to avoid target collisions.
+
 The VU source priority is:
 
 1. Explicit `left_level_entity` / `right_level_entity`.
