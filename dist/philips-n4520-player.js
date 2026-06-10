@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.10";
+const CARD_VERSION = "0.0.11";
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -64,6 +64,8 @@ const SLOWEST_SPEED_IPS = 3.75;
 const PINCH_ROLLER_DIAMETER_IN = 1.15;
 const GUIDE_ROLLER_DIAMETER_IN = 1.35;
 const TENSIONER_ROLLER_DIAMETER_IN = 0.95;
+const LEFT_REEL_BASE_DURATION = 6.1;
+const RIGHT_REEL_BASE_DURATION = 5.9;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -340,8 +342,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._isVisible = true;
     this._visibilityObserver = null;
     this._transportIntent = null;
-    this._reelAngles = { left: 0, right: 0 };
-    this._reelDps = { left: 0, right: 0 };
+    this._reelRateTarget = { left: 1, right: 1 };
+    this._reelRateCurrent = { left: 1, right: 1 };
   }
 
   connectedCallback() {
@@ -513,24 +515,36 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     return Boolean(this._config?.left_level_entity && this._config?.right_level_entity);
   }
 
-  _setReelPlayback(leftDps, rightDps, playing) {
-    this._reelDps.left = playing ? leftDps : 0;
-    this._reelDps.right = playing ? rightDps : 0;
+  _setReelRateTargets(leftDps, rightDps) {
+    this._reelRateTarget.left = clamp(leftDps / (360 / LEFT_REEL_BASE_DURATION), 0.2, 3);
+    this._reelRateTarget.right = clamp(rightDps / (360 / RIGHT_REEL_BASE_DURATION), 0.2, 3);
   }
 
-  _updateReelPhase(dt) {
+  _updateReelPlaybackRates(dt) {
     if (!this._els.leftReel || !this._els.rightReel || this._mode() !== "play") return;
-    this._reelAngles.left = (this._reelAngles.left - this._reelDps.left * dt) % 360;
-    this._reelAngles.right = (this._reelAngles.right - this._reelDps.right * dt) % 360;
-    this._els.leftReel.style.transform = `rotate(${this._reelAngles.left.toFixed(3)}deg)`;
-    this._els.rightReel.style.transform = `rotate(${this._reelAngles.right.toFixed(3)}deg)`;
+    const response = Math.min(1, dt * 3);
+    this._reelRateCurrent.left += (this._reelRateTarget.left - this._reelRateCurrent.left) * response;
+    this._reelRateCurrent.right += (this._reelRateTarget.right - this._reelRateCurrent.right) * response;
+
+    [
+      [this._els.leftReel, this._reelRateCurrent.left],
+      [this._els.rightReel, this._reelRateCurrent.right],
+    ].forEach(([reel, rate]) => {
+      reel.getAnimations().forEach((animation) => {
+        if (animation.animationName && animation.animationName !== "reel-spin") return;
+        if (typeof animation.updatePlaybackRate === "function") {
+          animation.updatePlaybackRate(rate);
+        } else {
+          animation.playbackRate = rate;
+        }
+      });
+    });
   }
 
   _applyMotionSpeeds(progress, playing) {
     if (!this._els.deck) return;
     if (!playing) {
       this._lastMotionKey = "stopped";
-      this._setReelPlayback(0, 0, false);
       return;
     }
 
@@ -541,13 +555,11 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const guideDps = angularDegreesPerSecond(tapeSpeed, GUIDE_ROLLER_DIAMETER_IN);
     const tensionerDps = angularDegreesPerSecond(tapeSpeed, TENSIONER_ROLLER_DIAMETER_IN);
     const durations = {
-      left: (360 / Math.max(1, leftDps)).toFixed(3),
-      right: (360 / Math.max(1, rightDps)).toFixed(3),
       pinch: (360 / Math.max(1, pinchDps)).toFixed(3),
       guide: (360 / Math.max(1, guideDps)).toFixed(3),
       tensioner: (360 / Math.max(1, tensionerDps)).toFixed(3),
     };
-    this._setReelPlayback(leftDps, rightDps, true);
+    this._setReelRateTargets(leftDps, rightDps);
     const key = Object.values(durations).join("|");
     if (key === this._lastMotionKey) return;
     this._lastMotionKey = key;
@@ -594,7 +606,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._raf = 0;
     const dt = clamp((now - this._lastFrame) / 1000, 1 / 120, 1 / 20);
     this._lastFrame = now;
-    this._updateReelPhase(dt);
+    this._updateReelPlaybackRates(dt);
 
     if (now - this._lastSync >= 500) {
       this._lastSync = now;
@@ -729,6 +741,16 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           transform-origin: 50% 50%;
           will-change: transform;
           background: transparent;
+          animation: reel-spin 6.1s linear infinite;
+          animation-play-state: paused;
+        }
+
+        .right-reel {
+          animation-duration: 5.9s;
+        }
+
+        .deck-photo-stage[data-mode="play"] .photo-reel {
+          animation-play-state: running;
         }
 
         .photo-reel::before {
@@ -763,13 +785,13 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         .reel-sticker {
           position: absolute;
           z-index: 3;
-          left: 30%;
-          top: 77%;
+          left: 31%;
+          top: 74%;
           width: 38%;
           min-height: 11%;
           padding: 2.6% 3.2%;
           border-radius: 4px 6px 5px 3px;
-          transform: translate(-50%, -50%) rotate(22deg);
+          transform: translate(-50%, -50%) rotate(8deg);
           background:
             linear-gradient(90deg, rgba(204, 68, 54, 0.18) 0 9%, transparent 9%),
             repeating-linear-gradient(180deg, transparent 0 1.34em, rgba(69, 116, 170, 0.26) 1.34em calc(1.34em + 1px), transparent calc(1.34em + 1px) 1.62em),
@@ -1260,6 +1282,10 @@ class PhilipsN4520PlayerCard extends HTMLElement {
           height: 100%;
           width: 0%;
           background: #d7a448;
+        }
+
+        @keyframes reel-spin {
+          to { transform: rotate(-360deg); }
         }
 
         @keyframes roller-spin-cw {
