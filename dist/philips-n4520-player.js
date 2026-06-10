@@ -1,9 +1,10 @@
-const CARD_VERSION = "0.0.18";
+const CARD_VERSION = "0.0.19";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 const DEFAULT_SENDSPIN_VU_CALIBRATION_DB = 22;
 const DEFAULT_SENDSPIN_VU_WINDOW_MS = 25;
 const METER_FRAME_INTERVAL_MS = 16;
-const SENDSPIN_VU_QUEUE_LIMIT = 400;
+const SENDSPIN_VU_QUEUE_LIMIT = 2000;
+const SENDSPIN_VU_TIMELINE_RESET_GAP_US = 5_000_000;
 
 const MEDIA_STATE_PLAYING = "playing";
 const MEDIA_STATE_PAUSED = "paused";
@@ -392,6 +393,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._sendspinSeenAudio = false;
     this._sendspinLastAt = 0;
     this._sendspinQueuedLevels = [];
+    this._sendspinVuTimeline = null;
     this._sendspinDebugStats = this._createSendspinDebugStats();
     this._sendspinStatus = "disabled";
     this._sendspinCore = null;
@@ -569,6 +571,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       late: 0,
       leadMs: 0,
       timeErrorMs: null,
+      absoluteLeadMs: null,
     };
   }
 
@@ -577,6 +580,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._sendspinLevelR = -60;
     this._sendspinLastAt = 0;
     this._sendspinQueuedLevels = [];
+    this._sendspinVuTimeline = null;
     this._sendspinDebugStats = this._createSendspinDebugStats();
   }
 
@@ -745,6 +749,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         queue: this._sendspinQueuedLevels.length,
         leadMs: baseDisplayAt - now,
       });
+      this._sortSendspinLevelQueue();
       this._startLoop();
       return;
     }
@@ -784,6 +789,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const timeFilter = this._sendspinCore?._timeFilter;
     const synced = Boolean(timeFilter?.is_synchronized);
     const timeErrorMs = Number(this._sendspinCore?.timeSyncInfo?.error);
+    let absoluteLeadMs = null;
 
     if (
       synced
@@ -792,12 +798,36 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     ) {
       const clientTimeMs = timeFilter.computeClientTime(serverTimeUs) / 1000;
       if (Number.isFinite(clientTimeMs)) {
+        absoluteLeadMs = clientTimeMs - now;
+      }
+    }
+
+    if (Number.isFinite(serverTimeUs)) {
+      const timeline = this._sendspinVuTimeline;
+      const gapUs = timeline ? serverTimeUs - timeline.serverTimeUs : 0;
+      if (
+        !timeline
+        || gapUs < 0
+        || Math.abs(gapUs) > SENDSPIN_VU_TIMELINE_RESET_GAP_US
+      ) {
+        this._sendspinVuTimeline = {
+          serverTimeUs,
+          localTimeMs: now,
+        };
+      }
+
+      const anchoredDisplayAt = this._sendspinVuTimeline.localTimeMs
+        + (serverTimeUs - this._sendspinVuTimeline.serverTimeUs) / 1000
+        + offsetMs;
+
+      if (Number.isFinite(anchoredDisplayAt)) {
         this._updateSendspinDebugStats({
-          schedule: "server",
-          synced: true,
+          schedule: "timeline",
+          synced,
           timeErrorMs: Number.isFinite(timeErrorMs) ? timeErrorMs : null,
+          absoluteLeadMs,
         });
-        return clientTimeMs + offsetMs;
+        return anchoredDisplayAt;
       }
     }
 
@@ -805,6 +835,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       schedule: "arrival",
       synced,
       timeErrorMs: Number.isFinite(timeErrorMs) ? timeErrorMs : null,
+      absoluteLeadMs,
     });
     return now + offsetMs;
   }
@@ -822,15 +853,16 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       return;
     }
     this._sendspinQueuedLevels.push({ at: displayAt, left, right });
-    if (this._sendspinQueuedLevels.length > SENDSPIN_VU_QUEUE_LIMIT) {
-      this._sendspinQueuedLevels.splice(0, this._sendspinQueuedLevels.length - SENDSPIN_VU_QUEUE_LIMIT);
-    }
   }
 
   _sortSendspinLevelQueue() {
     if (this._sendspinQueuedLevels.length > 1) {
       this._sendspinQueuedLevels.sort((a, b) => a.at - b.at);
     }
+    if (this._sendspinQueuedLevels.length > SENDSPIN_VU_QUEUE_LIMIT) {
+      this._sendspinQueuedLevels.splice(SENDSPIN_VU_QUEUE_LIMIT);
+    }
+    this._updateSendspinDebugStats({ queue: this._sendspinQueuedLevels.length });
   }
 
   _applyDueSendspinLevelFrames(now) {
@@ -974,6 +1006,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const stats = this._sendspinDebugStats || this._createSendspinDebugStats();
     const sampleRate = stats.sampleRate ? `${Math.round(stats.sampleRate / 100) / 10}kHz` : "n/a";
     const timeError = Number.isFinite(stats.timeErrorMs) ? `${Math.round(stats.timeErrorMs)}ms` : "n/a";
+    const absoluteLead = Number.isFinite(stats.absoluteLeadMs) ? `${Math.round(stats.absoluteLeadMs)}ms` : "n/a";
     return ` | ${stats.schedule}/${stats.synced ? "sync" : "nosync"}`
       + ` sr ${sampleRate}`
       + ` chunk ${Math.round(stats.chunkMs)}ms`
@@ -981,6 +1014,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       + ` q ${stats.queue}`
       + ` late ${stats.late}/${stats.frames}`
       + ` lead ${Math.round(stats.leadMs)}ms`
+      + ` abs ${absoluteLead}`
       + ` err ${timeError}`;
   }
 

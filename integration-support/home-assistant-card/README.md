@@ -82,7 +82,10 @@ the meter when Sendspin delivers audio ahead of the speaker.
 frame. Lower values feel faster and more detailed; higher values feel smoother.
 Set `sendspin_debug: true` while tuning to show the active timing source,
 sample rate, chunk duration, window duration, queue depth, late frames, lead
-time, and Sendspin time-sync error in the card status line.
+time, raw Sendspin absolute lead, and Sendspin time-sync error in the card
+status line. The normal Sendspin timing source should be `timeline/sync`, which
+uses Sendspin timestamps for stable frame spacing while anchoring the VU display
+to local receipt time plus `sendspin_vu_offset_ms`.
 
 Each independently routed deck card should have its own Sendspin target. The
 default `sendspin_player_id` is derived from the configured `entity`, which is
