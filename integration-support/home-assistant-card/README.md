@@ -75,17 +75,18 @@ so the card computes stereo RMS and maps it to the deck VU scale. The
 `sendspin_vu_calibration_db` value sets the dBFS reference for `0 VU`; raise it
 if the meters read too low, or lower it if they pin too often.
 `sendspin_vu_offset_ms` delays or advances the displayed VU interpretation in
-milliseconds. Use positive values when the meter leads the audible playback;
-negative values apply received frames immediately and can only truly advance
-the meter when Sendspin delivers audio ahead of the speaker.
+milliseconds. It accepts values from `-30000` to `30000`. Use positive values
+when the meter leads the audible playback; negative values apply received
+frames immediately and can only truly advance the meter when Sendspin delivers
+audio ahead of the speaker.
 `sendspin_vu_window_ms` controls how much decoded PCM is averaged into each VU
 frame. Lower values feel faster and more detailed; higher values feel smoother.
 Set `sendspin_debug: true` while tuning to show the active timing source,
-sample rate, chunk duration, window duration, queue depth, late frames, lead
-time, raw Sendspin absolute lead, and Sendspin time-sync error in the card
-status line. The normal Sendspin timing source should be `timeline/sync`, which
-uses Sendspin timestamps for stable frame spacing while anchoring the VU display
-to local receipt time plus `sendspin_vu_offset_ms`.
+loaded offset config, sample rate, chunk duration, window duration, queue depth,
+late frames, lead time, raw Sendspin absolute lead, and Sendspin time-sync error
+in the card status line. The normal Sendspin timing source should be
+`timeline/sync`, which uses Sendspin timestamps for stable frame spacing while
+anchoring the VU display to local receipt time plus `sendspin_vu_offset_ms`.
 
 Each independently routed deck card should have its own Sendspin target. The
 default `sendspin_player_id` is derived from the configured `entity`, which is

@@ -1,9 +1,10 @@
-const CARD_VERSION = "0.0.19";
+const CARD_VERSION = "0.0.20";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 const DEFAULT_SENDSPIN_VU_CALIBRATION_DB = 22;
 const DEFAULT_SENDSPIN_VU_WINDOW_MS = 25;
 const METER_FRAME_INTERVAL_MS = 16;
 const SENDSPIN_VU_QUEUE_LIMIT = 2000;
+const SENDSPIN_VU_OFFSET_LIMIT_MS = 30_000;
 const SENDSPIN_VU_TIMELINE_RESET_GAP_US = 5_000_000;
 
 const MEDIA_STATE_PLAYING = "playing";
@@ -365,7 +366,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         { name: "sendspin_player_id", selector: { text: {} } },
         { name: "sendspin_client_name", selector: { text: {} } },
         { name: "sendspin_vu_calibration_db", selector: { number: { min: 0, max: 36, step: 1, mode: "box" } } },
-        { name: "sendspin_vu_offset_ms", selector: { number: { min: -2000, max: 2000, step: 25, mode: "box" } } },
+        { name: "sendspin_vu_offset_ms", selector: { number: { min: -30000, max: 30000, step: 25, mode: "box" } } },
         { name: "sendspin_vu_window_ms", selector: { number: { min: 10, max: 250, step: 5, mode: "box" } } },
         { name: "sendspin_debug", selector: { boolean: {} } },
         { name: "fake_vu", selector: { boolean: {} } },
@@ -541,7 +542,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
   _sendspinVuOffsetMs() {
     const configured = Number(this._config?.sendspin_vu_offset_ms);
     if (!Number.isFinite(configured)) return 0;
-    return clamp(configured, -2000, 2000);
+    return clamp(configured, -SENDSPIN_VU_OFFSET_LIMIT_MS, SENDSPIN_VU_OFFSET_LIMIT_MS);
   }
 
   _sendspinVuWindowMs() {
@@ -570,6 +571,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       queue: 0,
       late: 0,
       leadMs: 0,
+      offsetMs: 0,
       timeErrorMs: null,
       absoluteLeadMs: null,
     };
@@ -824,6 +826,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         this._updateSendspinDebugStats({
           schedule: "timeline",
           synced,
+          offsetMs,
           timeErrorMs: Number.isFinite(timeErrorMs) ? timeErrorMs : null,
           absoluteLeadMs,
         });
@@ -834,6 +837,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     this._updateSendspinDebugStats({
       schedule: "arrival",
       synced,
+      offsetMs,
       timeErrorMs: Number.isFinite(timeErrorMs) ? timeErrorMs : null,
       absoluteLeadMs,
     });
@@ -1009,6 +1013,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     const absoluteLead = Number.isFinite(stats.absoluteLeadMs) ? `${Math.round(stats.absoluteLeadMs)}ms` : "n/a";
     return ` | ${stats.schedule}/${stats.synced ? "sync" : "nosync"}`
       + ` sr ${sampleRate}`
+      + ` cfg ${Math.round(stats.offsetMs)}ms`
       + ` chunk ${Math.round(stats.chunkMs)}ms`
       + ` win ${Math.round(stats.windowMs)}ms`
       + ` q ${stats.queue}`
