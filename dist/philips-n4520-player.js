@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.20";
+const CARD_VERSION = "0.0.21";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 const DEFAULT_SENDSPIN_VU_CALIBRATION_DB = 22;
 const DEFAULT_SENDSPIN_VU_WINDOW_MS = 25;
@@ -367,6 +367,19 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         { name: "sendspin_client_name", selector: { text: {} } },
         { name: "sendspin_vu_calibration_db", selector: { number: { min: 0, max: 36, step: 1, mode: "box" } } },
         { name: "sendspin_vu_offset_ms", selector: { number: { min: -30000, max: 30000, step: 25, mode: "box" } } },
+        {
+          name: "sendspin_vu_timing_mode",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                { value: "absolute", label: "Absolute Sendspin timestamp" },
+                { value: "timeline", label: "Local anchored timeline" },
+                { value: "arrival", label: "Arrival time" },
+              ],
+            },
+          },
+        },
         { name: "sendspin_vu_window_ms", selector: { number: { min: 10, max: 250, step: 5, mode: "box" } } },
         { name: "sendspin_debug", selector: { boolean: {} } },
         { name: "fake_vu", selector: { boolean: {} } },
@@ -551,11 +564,18 @@ class PhilipsN4520PlayerCard extends HTMLElement {
     return clamp(configured, 10, 250);
   }
 
+  _sendspinVuTimingMode() {
+    const configured = String(this._config?.sendspin_vu_timing_mode || "absolute").toLowerCase();
+    if (["absolute", "timeline", "arrival"].includes(configured)) return configured;
+    return "absolute";
+  }
+
   _sendspinVuTimingKey() {
     if (!this._config) return "";
     return [
       this._config.sendspin_vu_calibration_db ?? "",
       this._config.sendspin_vu_offset_ms ?? "",
+      this._config.sendspin_vu_timing_mode ?? "",
       this._config.sendspin_vu_window_ms ?? "",
     ].join("|");
   }
@@ -787,10 +807,12 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
   _sendspinChunkDisplayTimeMs(chunk, now) {
     const offsetMs = this._sendspinVuOffsetMs();
+    const timingMode = this._sendspinVuTimingMode();
     const serverTimeUs = Number(chunk?.serverTimeUs);
     const timeFilter = this._sendspinCore?._timeFilter;
     const synced = Boolean(timeFilter?.is_synchronized);
     const timeErrorMs = Number(this._sendspinCore?.timeSyncInfo?.error);
+    let clientTimeMs = null;
     let absoluteLeadMs = null;
 
     if (
@@ -798,13 +820,25 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       && Number.isFinite(serverTimeUs)
       && typeof timeFilter.computeClientTime === "function"
     ) {
-      const clientTimeMs = timeFilter.computeClientTime(serverTimeUs) / 1000;
+      clientTimeMs = timeFilter.computeClientTime(serverTimeUs) / 1000;
       if (Number.isFinite(clientTimeMs)) {
         absoluteLeadMs = clientTimeMs - now;
       }
     }
 
-    if (Number.isFinite(serverTimeUs)) {
+    if (timingMode === "absolute" && Number.isFinite(clientTimeMs)) {
+      const absoluteDisplayAt = clientTimeMs + offsetMs;
+      this._updateSendspinDebugStats({
+        schedule: "absolute",
+        synced,
+        offsetMs,
+        timeErrorMs: Number.isFinite(timeErrorMs) ? timeErrorMs : null,
+        absoluteLeadMs,
+      });
+      return absoluteDisplayAt;
+    }
+
+    if (timingMode !== "arrival" && Number.isFinite(serverTimeUs)) {
       const timeline = this._sendspinVuTimeline;
       const gapUs = timeline ? serverTimeUs - timeline.serverTimeUs : 0;
       if (

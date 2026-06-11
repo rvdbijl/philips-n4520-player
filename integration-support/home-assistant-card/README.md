@@ -54,6 +54,7 @@ sendspin_player_id: n4520_visualizer
 sendspin_client_name: Philips N4520 Visualizer
 sendspin_vu_calibration_db: 22
 sendspin_vu_offset_ms: 0
+sendspin_vu_timing_mode: absolute
 sendspin_vu_window_ms: 25
 sendspin_debug: false
 ```
@@ -79,14 +80,19 @@ milliseconds. It accepts values from `-30000` to `30000`. Use positive values
 when the meter leads the audible playback; negative values apply received
 frames immediately and can only truly advance the meter when Sendspin delivers
 audio ahead of the speaker.
+`sendspin_vu_timing_mode` controls how Sendspin timestamps are mapped to the VU
+display. `absolute` is the default and uses the synchronized Sendspin
+presentation timestamp, which is usually correct for Sonos or other players
+with deep buffering. `timeline` uses Sendspin timestamps only for stable frame
+spacing while anchoring display time to local receipt time. `arrival` schedules
+from websocket receipt time only.
 `sendspin_vu_window_ms` controls how much decoded PCM is averaged into each VU
 frame. Lower values feel faster and more detailed; higher values feel smoother.
 Set `sendspin_debug: true` while tuning to show the active timing source,
 loaded offset config, sample rate, chunk duration, window duration, queue depth,
 late frames, lead time, raw Sendspin absolute lead, and Sendspin time-sync error
-in the card status line. The normal Sendspin timing source should be
-`timeline/sync`, which uses Sendspin timestamps for stable frame spacing while
-anchoring the VU display to local receipt time plus `sendspin_vu_offset_ms`.
+in the card status line. The normal Sendspin timing source for Sonos should be
+`absolute/sync`, with `sendspin_vu_offset_ms` used only as a small final trim.
 
 Each independently routed deck card should have its own Sendspin target. The
 default `sendspin_player_id` is derived from the configured `entity`, which is
