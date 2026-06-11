@@ -1,6 +1,6 @@
 {
   "name": "n4520-player",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "description": "A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API.",
   "main": "app.js",
   "scripts": {

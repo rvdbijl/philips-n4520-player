@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.21";
+const CARD_VERSION = "0.0.22";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 const DEFAULT_SENDSPIN_VU_CALIBRATION_DB = 22;
 const DEFAULT_SENDSPIN_VU_WINDOW_MS = 25;
@@ -1326,6 +1326,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         .photo-reel {
           position: absolute;
           inset: 0;
+          container-type: size;
           border-radius: 50%;
           overflow: hidden;
           transform-origin: 50% 50%;
@@ -1365,7 +1366,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
         .reel-sticker {
           position: absolute;
           z-index: 3;
-          left: calc(31% + 20px);
+          left: 34.4%;
           top: 74%;
           width: 38%;
           min-height: 11%;
@@ -1380,7 +1381,8 @@ class PhilipsN4520PlayerCard extends HTMLElement {
             linear-gradient(#f5f0df, #ebe3cf);
           color: #2d2117;
           font-family: "Segoe Print", "Bradley Hand ITC", "Bradley Hand", "Marker Felt", "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Noteworthy", cursive;
-          font-size: clamp(5px, 0.78vw, 13px);
+          font-size: 8px;
+          font-size: clamp(4px, 4.1cqw, 13px);
           line-height: 1.04;
           letter-spacing: 0;
           border: 1px solid rgba(98, 83, 58, 0.5);
