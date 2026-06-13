@@ -1,6 +1,6 @@
 {
   "name": "n4520-player",
-  "version": "0.0.22",
+  "version": "0.1.0",
   "description": "A HACS-installable Home Assistant dashboard card for a Philips N4520 reel-to-reel styled media player.",
   "main": "dist/philips-n4520-player.js",
   "scripts": {

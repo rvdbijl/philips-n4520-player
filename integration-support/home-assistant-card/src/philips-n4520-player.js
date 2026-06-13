@@ -1,4 +1,4 @@
-const CARD_VERSION = "0.0.22";
+const CARD_VERSION = "0.1.0";
 const DEFAULT_SENDSPIN_LIBRARY = new URL("./vendor/sendspin-js/index.js", import.meta.url).href;
 const DEFAULT_SENDSPIN_VU_CALIBRATION_DB = 22;
 const DEFAULT_SENDSPIN_VU_WINDOW_MS = 25;
