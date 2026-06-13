@@ -10,6 +10,8 @@ Demo video: [assets/demo.mp4](assets/demo.mp4).
 
 The card uses a photo-composited N4520 transport with rotating reels, tape packs, rollers, VU needles, status LEDs, a counter, transport controls, and a reel sticker for track metadata. The distributable HACS artifact lives in `dist/philips-n4520-player.js`, with required image assets in `dist/assets/`.
 
+This is an experimental card with no guarantees that it will work correctly in every Home Assistant dashboard or playback setup. Most of the code has been written with Codex.
+
 ## Install With HACS
 
 Until this repository is published as a default HACS repository, add it as a custom repository:
@@ -44,6 +46,13 @@ Optional:
 - `sendspin_enabled` and related Sendspin options: optional decoded PCM level source for setups that expose a compatible Sendspin endpoint.
 
 Detailed card configuration notes are in `integration-support/home-assistant-card/README.md`.
+
+## Known Issues
+
+- Multiple instances of the card using Sendspin do not work correctly yet.
+- Reel animation can sometimes draw outside the card bounds and overlap nearby cards or the Home Assistant title bar.
+- VU meter synchronization with Sendspin is not perfect.
+- Animation can occasionally hiccup slightly.
 
 ## Repository Shape
 
