@@ -1,16 +1,14 @@
-# HA / MA Integration Support
+# Home Assistant Card Support
 
-This folder holds the Home Assistant and Music Assistant integration work.
+This folder holds the editable source and documentation for the Home Assistant dashboard card.
 
-- `home-assistant-card/`: source and notes for the HACS-installable custom card.
-- `music-assistant-provider/`: experimental MA `audio_analysis` provider that
-  publishes live PCM-derived VU level frames.
-- `HA_MA_INTEGRATION_PLAN.md`: current architecture notes and the phased plan for real VU meter support through Music Assistant PCM analysis.
+- `home-assistant-card/`: source and configuration notes for the HACS-installable custom card.
 
-The HACS distributable card entry point is kept at `dist/philips-n4520-player.js` because HACS dashboard plugins must expose a matching JavaScript file from `dist/` or the repository root.
+The HACS distributable entry point remains at `dist/philips-n4520-player.js`, with required card assets in `dist/assets/`, because HACS dashboard plugins must expose the JavaScript artifact from `dist/` or the repository root.
 
-The current preferred real-VU experiment is the card-side Music Assistant
-Sendspin path. The card can connect to MA's `/sendspin` endpoint and use the
-vendored `@sendspin/sendspin-js` runtime to derive levels from decoded PCM. The
-MA `audio_analysis` provider remains in this folder as the server-side fallback
-path if Sendspin grouping does not work for the target playback route.
+Keep these files in sync until a build step is introduced:
+
+```text
+integration-support/home-assistant-card/src/philips-n4520-player.js
+dist/philips-n4520-player.js
+```

@@ -7,7 +7,7 @@ test("renders the N4520 visualizer with compositor reel layers", async ({ page }
     if (message.type() === "error") browserErrors.push(message.text());
   });
 
-  await page.goto("http://localhost:4173/", { waitUntil: "networkidle" });
+  await page.goto("http://localhost:4173/standalone/", { waitUntil: "networkidle" });
 
   await expect(page.locator("#reelCanvas")).toBeHidden();
   await expect(page.locator(".reel-mount-left")).toBeVisible();

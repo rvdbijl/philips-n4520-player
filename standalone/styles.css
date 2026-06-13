@@ -234,11 +234,11 @@ input {
 }
 
 .reel-mount-left .photo-reel::before {
-  background-image: url("assets/reel-front-face.png");
+  background-image: url("../assets/reel-front-face.png");
 }
 
 .reel-mount-right .photo-reel::before {
-  background-image: url("assets/reel-front-face.png");
+  background-image: url("../assets/reel-front-face.png");
 }
 
 .photo-pack {

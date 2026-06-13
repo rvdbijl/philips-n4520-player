@@ -1,4 +1,4 @@
-import * as THREE from "./assets/three.module.min.js";
+import * as THREE from "../assets/three.module.min.js";
 
 const audio = document.getElementById("audio");
 const fileInput = document.getElementById("fileInput");
@@ -517,7 +517,7 @@ function initReel3d() {
 
   const loader = new THREE.TextureLoader();
   Promise.all([
-    loader.loadAsync("assets/reel-front-face.png"),
+    loader.loadAsync("../assets/reel-front-face.png"),
   ]).then(([reelTexture]) => {
     [reelTexture].forEach((texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;

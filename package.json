@@ -1,11 +1,12 @@
 {
   "name": "n4520-player",
   "version": "0.0.22",
-  "description": "A static browser prototype for a Philips N4520 reel-to-reel styled audio player. It plays a local MP3 or FLAC file and drives the visualization from the Web Audio API.",
-  "main": "app.js",
+  "description": "A HACS-installable Home Assistant dashboard card for a Philips N4520 reel-to-reel styled media player.",
+  "main": "dist/philips-n4520-player.js",
   "scripts": {
     "check": "npm run check:app && npm run check:card",
-    "check:app": "node --input-type=module --check < app.js",
+    "check:standalone": "node --input-type=module --check < standalone/app.js",
+    "check:app": "npm run check:standalone",
     "check:card": "node --input-type=module --check < dist/philips-n4520-player.js",
     "test": "playwright test"
   },

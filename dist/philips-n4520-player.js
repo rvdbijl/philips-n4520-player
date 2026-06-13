@@ -1028,7 +1028,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
 
   _sendspinSourceText() {
     const debug = this._sendspinDebugText();
-    if (this._sendspinLevelsActive()) return `VU levels: Music Assistant Sendspin PCM${debug}`;
+    if (this._sendspinLevelsActive()) return `VU levels: Sendspin PCM${debug}`;
     if (this._sendspinStatus === "connected") {
       return `VU levels: Sendspin connected, waiting for routed audio${debug}`;
     }
@@ -1036,7 +1036,7 @@ class PhilipsN4520PlayerCard extends HTMLElement {
       return `VU levels: Sendspin error, fake fallback active${debug}`;
     }
     if (this._config?.sendspin_enabled) return `VU levels: Sendspin ${this._sendspinStatus}${debug}`;
-    return "VU levels: fake fallback until Music Assistant levels are configured";
+    return "VU levels: fake fallback until live levels are configured";
   }
 
   _sendspinDebugText() {
@@ -2018,7 +2018,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "philips-n4520-player",
   name: "Philips N4520 Player",
-  description: "Music Assistant aware reel-to-reel player card",
+  description: "Philips N4520 reel-to-reel media player card",
   preview: true,
 });
 
